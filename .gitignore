@@ -1,0 +1,56 @@
+# Build outputs
+_build_/
+bin/
+lib/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.VC.db
+*.VC.opendb
+*.userosscache
+*.sln.docstates
+
+# MSVC artifacts
+*.obj
+*.pch
+*.pdb
+*.ilk
+*.idb
+*.tlog
+*.lastbuildstate
+*.recipe
+*.log
+*.ipch
+
+# Executables / libraries
+*.exe
+*.dll
+*.lib
+*.exp
+
+# CMake / generated files
+CMakeFiles/
+CMakeCache.txt
+cmake-build-*/
+compile_commands.json
+Testing/
+
+# Test / benchmark outputs
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# Package / dependency caches
+.nuget/
+packages/
+
+# Other editors
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
