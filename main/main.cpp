@@ -1,3 +1,6 @@
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <glad.h>
 #include <GLFW/glfw3.h>
 
