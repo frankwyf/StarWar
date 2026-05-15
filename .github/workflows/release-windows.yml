@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+env:
+  PLAYABLE_ARTIFACT_NAME: StarWar-Windows-Playable
+  PLAYABLE_ZIP_NAME: StarWar-${{ github.ref_name }}-Windows-Playable.zip
+
 jobs:
   build:
     runs-on: windows-latest
@@ -21,28 +25,38 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Build StarWar release
-        run: msbuild StarWar.sln /m /p:Configuration=release /p:Platform=x64
+        run: msbuild main\\main.vcxproj /m /p:Configuration=release /p:Platform=x64
 
       - name: Prepare package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dist -Force | Out-Null
-          Copy-Item bin/main-release-x64-msc-v145.exe dist/StarWar.exe
+          $gameExe = Get-ChildItem -Path bin -Filter 'main-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $gameExe) { throw 'StarWar executable was not produced in bin/' }
+          Copy-Item $gameExe.FullName dist/StarWar.exe
           if (Test-Path README.md) { Copy-Item README.md dist/README.md }
           if (Test-Path LICENSE) { Copy-Item LICENSE dist/LICENSE }
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: StarWar-windows-x64
+          name: ${{ env.PLAYABLE_ARTIFACT_NAME }}
           path: dist
 
       - name: Create zip package
         shell: pwsh
-        run: Compress-Archive -Path dist\* -DestinationPath StarWar-windows-x64.zip -Force
+        run: Compress-Archive -Path dist\* -DestinationPath $env:PLAYABLE_ZIP_NAME -Force
 
       - name: Publish tagged release asset
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: StarWar-windows-x64.zip
+          name: StarWar ${{ github.ref_name }}
+          body: |
+            Playable Windows build for StarWar.
+
+            Players: download `${{ env.PLAYABLE_ZIP_NAME }}`, extract it, and run `StarWar.exe`.
+
+            The auto-generated source code archives are for developers. Most players should ignore them.
+          files: ${{ env.PLAYABLE_ZIP_NAME }}
+          generate_release_notes: true
