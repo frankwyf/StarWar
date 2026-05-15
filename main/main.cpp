@@ -1,6 +1,3 @@
-#ifdef _WIN32
-#include <windows.h>
-#endif
 #include <glad.h>
 #include <GLFW/glfw3.h>
 
@@ -221,8 +218,6 @@ namespace
 
 int main( int aArgc, char* aArgv[] ) try
 {
-    MessageBoxA(nullptr, "StarWar 启动成功，已进入 main()。", "StarWar 启动诊断", MB_OK | MB_ICONINFORMATION);
-
 	// Parse command line arguments
 	RuntimeConfig const config = parse_command_line( aArgc, aArgv );
 
@@ -775,15 +770,12 @@ int main( int aArgc, char* aArgv[] ) try
 	
 	return 0;
 }
-catch( std::exception const& e )
+catch( std::exception const& eErr )
 {
-    MessageBoxA(nullptr, e.what(), "StarWar 崩溃异常", MB_OK | MB_ICONERROR);
-    return 1;
-}
-catch(...)
-{
-    MessageBoxA(nullptr, "Unknown exception!", "StarWar 崩溃异常", MB_OK | MB_ICONERROR);
-    return 2;
+	std::fprintf( stderr, "Top-level Exception (%s):\n", typeid(eErr).name() );
+	std::fprintf( stderr, "%s\n", eErr.what() );
+	std::fprintf( stderr, "Bye.\n" );
+	return 1;
 }
 
 

@@ -58,7 +58,7 @@
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS=1;_SCL_SECURE_NO_WARNINGS=1;_DEBUG=1;BENCHMARK_STATIC_DEFINE=1;DO_NOT_USE_WMAIN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>stb\include;glad\include;glfw\include;catch2\include;benchmark\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
-      <Optimization>Disabled</Optimization>
+      <Optimization>Disabled</Optimization><RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <MinimalRebuild>false</MinimalRebuild>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 /permissive- %(AdditionalOptions)</AdditionalOptions>
@@ -78,7 +78,7 @@
       <WarningLevel>Level4</WarningLevel>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS=1;_SCL_SECURE_NO_WARNINGS=1;NDEBUG=1;BENCHMARK_STATIC_DEFINE=1;DO_NOT_USE_WMAIN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>stb\include;glad\include;glfw\include;catch2\include;benchmark\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <Optimization>Full</Optimization>
+      <Optimization>Full</Optimization><RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <MinimalRebuild>false</MinimalRebuild>

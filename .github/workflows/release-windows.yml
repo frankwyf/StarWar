@@ -34,8 +34,6 @@ jobs:
           $gameExe = Get-ChildItem -Path bin -Filter 'main-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $gameExe) { throw 'StarWar executable was not produced in bin/' }
           Copy-Item $gameExe.FullName dist/StarWar.exe
-          # 打包所有 DLL 依赖
-          Get-ChildItem -Path bin -Filter '*.dll' | ForEach-Object { Copy-Item $_.FullName dist/ }
           if (Test-Path README.md) { Copy-Item README.md dist/README.md }
           if (Test-Path LICENSE) { Copy-Item LICENSE dist/LICENSE }
 
