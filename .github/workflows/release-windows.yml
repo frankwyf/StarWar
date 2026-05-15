@@ -34,6 +34,7 @@ jobs:
           $gameExe = Get-ChildItem -Path bin -Filter 'main-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $gameExe) { throw 'StarWar executable was not produced in bin/' }
           Copy-Item $gameExe.FullName dist/StarWar.exe
+          if (Test-Path assets) { Copy-Item -Recurse -Force assets dist/assets }
           if (Test-Path README.md) { Copy-Item README.md dist/README.md }
           if (Test-Path LICENSE) { Copy-Item LICENSE dist/LICENSE }
 
@@ -53,7 +54,7 @@ jobs:
         with:
           name: StarWar ${{ github.ref_name }}
           body: |
-            Playable Windows build for StarWar.
+            修复 EXE 无法打开的问题（补齐运行所需资源文件打包）。
 
             Players: download `${{ env.PLAYABLE_ZIP_NAME }}`, extract it, and run `StarWar.exe`.
 
