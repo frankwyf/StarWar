@@ -108,7 +108,6 @@ project "draw2d"
 project "support"
 	local sources = { 
 		"support/checkpoint.cpp",
-		--"support/context.cpp", -- separate implementation on Apple
 		"support/error.cpp",
 		"support/runconfig.cpp",
 		"support/checkpoint.hpp",
@@ -122,13 +121,11 @@ project "support"
 
 	files( sources )
 
-	-- Most systems use the normal context.cpp implementation
-	filter "system:not macosx"
-		files( "support/context.cpp" );
+	filter "system:windows or system:macosx"
+		files( "support/context-oldgl.cpp" )
 
-	-- Apple is stuck with older OpenGL
-	filter "system:macosx" 
-		files( "support/context-oldgl.cpp" );
+	filter "system:linux"
+		files( "support/context.cpp" )
 	
 	filter "*"
 

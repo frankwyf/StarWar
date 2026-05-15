@@ -15,7 +15,7 @@
 namespace
 {
 	constexpr char const kVertShaderGLSL[] = R"(
-		#version 410
+		#version 330
 		
 		// See 
 		// https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/
@@ -34,7 +34,7 @@ namespace
 		}
 	)";
 	constexpr char const kFragShaderGLSL[] = R"(
-		#version 410
+		#version 330
 
 		layout( location = 0 ) in vec2 v2fTexCoord;
 

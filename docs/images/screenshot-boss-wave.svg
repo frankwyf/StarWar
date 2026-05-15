@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#110b12"/>
+  <polygon points="640,560 600,600 680,600" fill="#61b1ff"/>
+  <polygon points="640,190 560,270 720,270" fill="#d04f4f"/>
+  <rect x="440" y="120" width="400" height="26" fill="#2a1a1a" stroke="#ffd2d2"/>
+  <rect x="444" y="124" width="280" height="18" fill="#f26464"/>
+  <text x="640" y="100" fill="#ffd2d2" font-family="Segoe UI, Arial, sans-serif" font-size="28" text-anchor="middle">BOSS HP</text>
+  <line x1="640" y1="560" x2="640" y2="330" stroke="#ffe17a" stroke-width="5"/>
+  <text x="640" y="680" fill="#ffb3b3" font-family="Segoe UI, Arial, sans-serif" font-size="28" text-anchor="middle">Boss Wave Preview</text>
+</svg>

@@ -12,6 +12,16 @@
 #include <cstdio>
 #include <cstdlib>
 
+#if defined(_WIN32)
+#	if !defined(NOMINMAX)
+#		define NOMINMAX
+#	endif
+#	if !defined(WIN32_LEAN_AND_MEAN)
+#		define WIN32_LEAN_AND_MEAN
+#	endif
+#	include <windows.h>
+#endif
+
 #include "../draw2d/surface.hpp"
 #include "../draw2d/draw.hpp"
 #include "../draw2d/shape.hpp"
@@ -40,6 +50,11 @@ namespace
 	constexpr float kEnemyBulletSpeed = 300.f;
 	constexpr float kPlayerBulletHitRadius = 12.f;
 	constexpr float kStartCountdownSeconds = 3.f;
+
+	char const* safe_cstr_( char const* aText ) noexcept
+	{
+		return aText ? aText : "<no error description>";
+	}
 
 	float difficulty_enemy_speed_scale_( EDifficulty d )
 	{
@@ -226,7 +241,7 @@ int main( int aArgc, char* aArgv[] ) try
 	{
 		char const* msg = nullptr;
 		int ecode = glfwGetError( &msg );
-		throw Error( "glfwInit() failed with '%s' (%d)", msg, ecode );
+		throw Error( "glfwInit() failed with '%s' (%d)", safe_cstr_(msg), ecode );
 	}
 
 	// Ensure that we call glfwTerminate() at the end of the program.
@@ -240,15 +255,19 @@ int main( int aArgc, char* aArgv[] ) try
 
 	//glfwWindowHint( GLFW_RESIZABLE, GLFW_FALSE ); // Allow resizing! Do not change this!
 
-#	if !defined(__APPLE__)
-	// Most platforms will support OpenGL 4.3
-	glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
+#	if defined(_WIN32)
+	// Windows release compatibility: request OpenGL 3.3 core.
+	glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 3 );
 	glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 3 );
-#	else // defined(__APPLE__)
-	// Apple has at most OpenGL 4.1, so don't ask for something newer.
+#	elif defined(__APPLE__)
+	// Apple supports at most OpenGL 4.1.
 	glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
 	glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 1 );
-#	endif // ~ __APPLE__
+#	else
+	// Linux and other platforms can target OpenGL 4.3.
+	glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
+	glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 3 );
+#	endif
 	glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE );
 	glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
 
@@ -270,7 +289,7 @@ int main( int aArgc, char* aArgv[] ) try
 	{
 		char const* msg = nullptr;
 		int ecode = glfwGetError( &msg );
-		throw Error( "glfwCreateWindow() failed with '%s' (%d)", msg, ecode );
+		throw Error( "glfwCreateWindow() failed with '%s' (%d)", safe_cstr_(msg), ecode );
 	}
 
 	GLFWWindowDeleter windowDeleter{ window };
@@ -775,6 +794,11 @@ catch( std::exception const& eErr )
 	std::fprintf( stderr, "Top-level Exception (%s):\n", typeid(eErr).name() );
 	std::fprintf( stderr, "%s\n", eErr.what() );
 	std::fprintf( stderr, "Bye.\n" );
+
+#if defined(_WIN32)
+	MessageBoxA( nullptr, eErr.what(), "StarWar startup error", MB_OK | MB_ICONERROR );
+#endif
+
 	return 1;
 }
 
@@ -783,7 +807,7 @@ namespace
 {
 	void glfw_callback_error_( int aErrNum, char const* aErrDesc )
 	{
-		std::fprintf( stderr, "GLFW error: %s (%d)\n", aErrDesc, aErrNum );
+		std::fprintf( stderr, "GLFW error: %s (%d)\n", safe_cstr_(aErrDesc), aErrNum );
 	}
 
 	void glfw_callback_key_( GLFWwindow* aWindow, int aKey, int, int aAction, int )

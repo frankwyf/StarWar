@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#090d19"/>
+  <circle cx="320" cy="180" r="2" fill="#dfe7ff"/><circle cx="530" cy="260" r="2" fill="#dfe7ff"/><circle cx="920" cy="140" r="2" fill="#dfe7ff"/>
+  <polygon points="640,360 605,390 670,390" fill="#58a6ff"/>
+  <polygon points="200,260 175,285 225,285" fill="#ff9b54"/>
+  <polygon points="1020,460 995,485 1045,485" fill="#ff9b54"/>
+  <line x1="640" y1="360" x2="740" y2="300" stroke="#ffe17a" stroke-width="4"/>
+  <line x1="210" y1="285" x2="320" y2="330" stroke="#ff7d7d" stroke-width="3"/>
+  <text x="40" y="52" fill="#c7dbff" font-family="Segoe UI, Arial, sans-serif" font-size="28">Score: 1280   Wave: 5   Shield: 72%</text>
+  <text x="640" y="680" fill="#9fc0ff" font-family="Segoe UI, Arial, sans-serif" font-size="28" text-anchor="middle">Combat Preview</text>
+</svg>

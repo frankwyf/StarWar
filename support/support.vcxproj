@@ -104,7 +104,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="checkpoint.cpp" />
-    <ClCompile Include="context.cpp" />
+    <ClCompile Include="context-oldgl.cpp" />
     <ClCompile Include="error.cpp" />
     <ClCompile Include="runconfig.cpp" />
   </ItemGroup>
