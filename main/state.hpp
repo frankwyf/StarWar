@@ -12,6 +12,13 @@ enum class EInputMode
 	piloting
 };
 
+enum class EDifficulty
+{
+	easy = 0,
+	normal = 1,
+	hard = 2
+};
+
 struct State
 {
 	EInputMode inputMode = EInputMode::standard;
@@ -28,11 +35,15 @@ struct State
 
 	// Gameplay
 	bool showStartScreen = true;
+	bool gameStarted = false;
+	bool countdownActive = false;
+	float countdownTime = 0.f;
 	bool fireRequested = false;
 	bool restartRequested = false;
 	bool gameOver = false;
 	bool thrustKeyHeld = false;
 	bool thrustMouseHeld = false;
+	EDifficulty difficulty = EDifficulty::normal;
 	int lives = 3;
 	int score = 0;
 	float fireCooldown = 0.f;
@@ -40,6 +51,10 @@ struct State
 	int wave = 1;
 	int weaponLevel = 1;
 	bool bossSpawned = false;
+	float shieldMax = 100.f;
+	float shield = 100.f;
+	float shieldRegenCooldown = 0.f;
+	float shieldRegenRate = 0.f;
 	// Frame data
 	struct Frame_
 	{

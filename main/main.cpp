@@ -39,6 +39,73 @@ namespace
 	constexpr float kRespawnInvulnerability = 1.5f;
 	constexpr float kEnemyBulletSpeed = 300.f;
 	constexpr float kPlayerBulletHitRadius = 12.f;
+	constexpr float kStartCountdownSeconds = 3.f;
+
+	float difficulty_enemy_speed_scale_( EDifficulty d )
+	{
+		switch( d )
+		{
+		case EDifficulty::easy: return 0.82f;
+		case EDifficulty::hard: return 1.22f;
+		case EDifficulty::normal:
+		default: return 1.f;
+		}
+	}
+
+	float difficulty_enemy_fire_scale_( EDifficulty d )
+	{
+		switch( d )
+		{
+		case EDifficulty::easy: return 1.35f;
+		case EDifficulty::hard: return 0.8f;
+		case EDifficulty::normal:
+		default: return 1.f;
+		}
+	}
+
+	int difficulty_extra_start_lives_( EDifficulty d )
+	{
+		switch( d )
+		{
+		case EDifficulty::easy: return 1;
+		case EDifficulty::hard: return -1;
+		case EDifficulty::normal:
+		default: return 0;
+		}
+	}
+
+	float difficulty_start_shield_( EDifficulty d )
+	{
+		switch( d )
+		{
+		case EDifficulty::easy: return 130.f;
+		case EDifficulty::hard: return 85.f;
+		case EDifficulty::normal:
+		default: return 100.f;
+		}
+	}
+
+	float difficulty_shield_regen_rate_( EDifficulty d )
+	{
+		switch( d )
+		{
+		case EDifficulty::easy: return 12.f;
+		case EDifficulty::hard: return 6.f;
+		case EDifficulty::normal:
+		default: return 8.5f;
+		}
+	}
+
+	int difficulty_wave_enemy_bonus_( EDifficulty d )
+	{
+		switch( d )
+		{
+		case EDifficulty::easy: return -1;
+		case EDifficulty::hard: return 1;
+		case EDifficulty::normal:
+		default: return 0;
+		}
+	}
 
 	void glfw_callback_error_( int, char const* );
 
@@ -325,8 +392,10 @@ int main( int aArgc, char* aArgv[] ) try
 		if( state.restartRequested )
 		{
 			auto* cursor = state.crosshair;
+			auto const selectedDifficulty = state.difficulty;
 			state = State{};
 			state.crosshair = cursor;
+			state.difficulty = selectedDifficulty;
 			state.inputMode = EInputMode::piloting;
 			state.showStartScreen = true;
 			glfwSetCursor( window, nullptr );
@@ -336,7 +405,12 @@ int main( int aArgc, char* aArgv[] ) try
 
 		state_update( state, dt );
 
-		if( !state.showStartScreen && !state.gameOver && state.fireRequested && state.fireCooldown <= 0.f )
+		if( state.countdownActive && state.countdownTime <= 0.f )
+		{
+			state.countdownActive = false;
+		}
+
+		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && state.fireRequested && state.fireCooldown <= 0.f )
 		{
 			Vec2f dir{ std::cos( state.player.angle ), std::sin( state.player.angle ) };
 			Vec2f muzzle = Vec2f{ fbwidth*0.5f, fbheight*0.5f } + dir * 28.f;
@@ -352,37 +426,41 @@ int main( int aArgc, char* aArgv[] ) try
 		}
 		state.fireRequested = false;
 
-		if( !state.showStartScreen && !state.gameOver && enemies.empty() )
+		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && enemies.empty() )
 		{
+			auto const enemySpeedScale = difficulty_enemy_speed_scale_( state.difficulty );
+			auto const enemyFireScale = difficulty_enemy_fire_scale_( state.difficulty );
 			if( state.wave % 4 == 0 )
 			{
 				Enemy boss;
 				boss.boss = true;
 				boss.hp = 14.f + state.wave;
 				boss.pos = { fbwidth + 160.f, fbheight * 0.5f };
-				boss.vel = { -90.f, 0.f };
-				boss.fireCooldown = 1.0f;
+				boss.vel = { -90.f * enemySpeedScale, 0.f };
+				boss.fireCooldown = 1.0f * enemyFireScale;
 				enemies.push_back( boss );
 				state.bossSpawned = true;
 			}
 			else
 			{
-				int count = 2 + state.wave;
+				int count = std::max( 1, 2 + state.wave + difficulty_wave_enemy_bonus_( state.difficulty ) );
 				std::uniform_real_distribution<float> sideY( 100.f, std::max( 120.f, float(fbheight) - 100.f ) );
 				for( int i = 0; i < count; ++i )
 				{
 					Enemy e;
 					e.pos = { (i % 2 == 0 ? -40.f : fbwidth + 40.f), sideY(rng) };
-					e.vel = { (i % 2 == 0 ? 100.f : -100.f) * (1.f + 0.06f * state.wave), (unit01(rng) - 0.5f) * 30.f };
-					e.fireCooldown = 0.5f + unit01(rng);
+					e.vel = { ((i % 2 == 0 ? 100.f : -100.f) * (1.f + 0.06f * state.wave)) * enemySpeedScale, ((unit01(rng) - 0.5f) * 30.f) * enemySpeedScale };
+					e.fireCooldown = (0.5f + unit01(rng)) * enemyFireScale;
 					e.hp = 1.f;
 					enemies.push_back( e );
 				}
 			}
 		}
 
-		if( !state.showStartScreen )
+		if( !state.showStartScreen && !state.countdownActive )
 		{
+			auto const enemySpeedScale = difficulty_enemy_speed_scale_( state.difficulty );
+			auto const enemyFireScale = difficulty_enemy_fire_scale_( state.difficulty );
 			for( auto& e : enemies )
 			{
 				if( state.gameOver ) break;
@@ -402,10 +480,10 @@ int main( int aArgc, char* aArgv[] ) try
 					{
 						Mat22f l = make_rotation_2d( 0.24f );
 						Mat22f r = make_rotation_2d( -0.24f );
-						bullets.push_back( Bullet{ e.pos, toPlayer * kEnemyBulletSpeed, 2.2f, true } );
-						bullets.push_back( Bullet{ e.pos, (l * toPlayer) * (kEnemyBulletSpeed * 0.92f), 2.2f, true } );
-						bullets.push_back( Bullet{ e.pos, (r * toPlayer) * (kEnemyBulletSpeed * 0.92f), 2.2f, true } );
-						e.fireCooldown = 0.72f;
+						bullets.push_back( Bullet{ e.pos, toPlayer * (kEnemyBulletSpeed * enemySpeedScale), 2.2f, true } );
+						bullets.push_back( Bullet{ e.pos, (l * toPlayer) * (kEnemyBulletSpeed * 0.92f * enemySpeedScale), 2.2f, true } );
+						bullets.push_back( Bullet{ e.pos, (r * toPlayer) * (kEnemyBulletSpeed * 0.92f * enemySpeedScale), 2.2f, true } );
+						e.fireCooldown = 0.72f * enemyFireScale;
 					}
 				}
 				else
@@ -415,8 +493,8 @@ int main( int aArgc, char* aArgv[] ) try
 					{
 						float jitter = (unit01(rng) - 0.5f) * 0.30f;
 						Mat22f miss = make_rotation_2d( jitter );
-						bullets.push_back( Bullet{ e.pos, (miss * toPlayer) * (kEnemyBulletSpeed * 0.95f), 1.9f, true } );
-						e.fireCooldown = 1.35f + unit01(rng) * 0.7f;
+						bullets.push_back( Bullet{ e.pos, (miss * toPlayer) * (kEnemyBulletSpeed * 0.95f * enemySpeedScale), 1.9f, true } );
+						e.fireCooldown = (1.35f + unit01(rng) * 0.7f) * enemyFireScale;
 					}
 				}
 			}
@@ -460,19 +538,28 @@ int main( int aArgc, char* aArgv[] ) try
 					}
 				}
 			}
-			else if( !state.showStartScreen && !state.gameOver && state.invulnerabilityTime <= 0.f && it->enemy )
-			{
-				auto d = it->pos - Vec2f{ fbwidth*0.5f, fbheight*0.5f };
-				if( dot(d,d) <= kPlayerBulletHitRadius * kPlayerBulletHitRadius )
+			else if( !state.showStartScreen && !state.gameOver && !state.countdownActive && state.invulnerabilityTime <= 0.f && it->enemy )
 				{
-					--state.lives;
-					state.invulnerabilityTime = kRespawnInvulnerability;
-					state.player.velocity = { 0.f, 0.f };
-					consumed = true;
-					if( state.lives <= 0 )
-						state.gameOver = true;
+					auto d = it->pos - Vec2f{ fbwidth*0.5f, fbheight*0.5f };
+					if( dot(d,d) <= kPlayerBulletHitRadius * kPlayerBulletHitRadius )
+					{
+						if( state.shield > 0.f )
+						{
+							state.shield = std::max( 0.f, state.shield - 22.f );
+							state.shieldRegenCooldown = 1.8f;
+							state.invulnerabilityTime = 0.2f;
+						}
+						else
+						{
+							--state.lives;
+							state.invulnerabilityTime = kRespawnInvulnerability;
+							state.player.velocity = { 0.f, 0.f };
+							if( state.lives <= 0 )
+								state.gameOver = true;
+						}
+						consumed = true;
+					}
 				}
-			}
 
 			if( it->life <= 0.f || consumed )
 				it = bullets.erase( it );
@@ -480,18 +567,37 @@ int main( int aArgc, char* aArgv[] ) try
 				++it;
 		}
 
+		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && state.shieldRegenCooldown <= 0.f && state.shield < state.shieldMax )
+		{
+			state.shield = std::min( state.shieldMax, state.shield + state.shieldRegenRate * state.thisFrame.dt );
+		}
+
 		background.update( state.player.position, state.thisFrame.movement );
 		asteroids.update( state.thisFrame.dt, state.thisFrame.movement );
 
-		if( !state.showStartScreen && !state.gameOver && state.invulnerabilityTime <= 0.f )
+		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && state.invulnerabilityTime <= 0.f )
 		{
+			auto absorb_or_hit_life = [&]( float shieldDamage )
+			{
+				if( state.shield > 0.f )
+				{
+					state.shield = std::max( 0.f, state.shield - shieldDamage );
+					state.shieldRegenCooldown = 2.0f;
+					state.invulnerabilityTime = 0.24f;
+				}
+				else
+				{
+					--state.lives;
+					state.invulnerabilityTime = kRespawnInvulnerability;
+					state.player.velocity = { 0.f, 0.f };
+					if( state.lives <= 0 )
+						state.gameOver = true;
+				}
+			};
+
 			if( asteroids.collides( Vec2f{ fbwidth*0.5f, fbheight*0.5f }, kPlayerCollisionRadius ) )
 			{
-				--state.lives;
-				state.invulnerabilityTime = kRespawnInvulnerability;
-				state.player.velocity = { 0.f, 0.f };
-				if( state.lives <= 0 )
-					state.gameOver = true;
+				absorb_or_hit_life( 34.f );
 			}
 			for( auto const& e : enemies )
 			{
@@ -499,21 +605,18 @@ int main( int aArgc, char* aArgv[] ) try
 				float rr = e.boss ? 62.f : 28.f;
 				if( dot(d,d) <= rr*rr )
 				{
-					--state.lives;
-					state.invulnerabilityTime = kRespawnInvulnerability;
-					state.player.velocity = { 0.f, 0.f };
-					if( state.lives <= 0 )
-						state.gameOver = true;
+					absorb_or_hit_life( e.boss ? 48.f : 26.f );
 					break;
 				}
 			}
 		}
 
-		if( !state.showStartScreen && !state.gameOver && enemies.empty() )
+		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && enemies.empty() )
 		{
 			++state.wave;
 			if( state.wave >= 2 ) state.weaponLevel = 2;
 			if( state.wave >= 4 ) state.weaponLevel = 3;
+			state.shield = std::min( state.shieldMax, state.shield + 22.f );
 		}
 
 		// Draw scene
@@ -554,6 +657,11 @@ int main( int aArgc, char* aArgv[] ) try
 		draw_rectangle_outline( surface, { 20.f, 20.f }, { 220.f, 36.f }, ColorU8_sRGB{ 180, 180, 180 } );
 		draw_rectangle_solid( surface, { 22.f, 22.f }, { 22.f + 196.f * scoreBar, 34.f }, ColorU8_sRGB{ 90, 200, 120 } );
 
+		float const shieldRatio = state.shieldMax > 0.f ? std::clamp( state.shield / state.shieldMax, 0.f, 1.f ) : 0.f;
+		draw_rectangle_outline( surface, { 20.f, 42.f }, { 220.f, 58.f }, ColorU8_sRGB{ 120, 170, 255 } );
+		draw_rectangle_solid( surface, { 22.f, 44.f }, { 22.f + 196.f * shieldRatio, 56.f }, ColorU8_sRGB{ 70, 140, 240 } );
+		draw_text_5x7_( surface, { 226.f, 45.f }, 1, ColorU8_sRGB{ 160, 200, 255 }, "SHIELD" );
+
 		for( int i = 0; i < state.lives; ++i )
 		{
 			float x0 = float(fbwidth) - 22.f - i * 22.f;
@@ -592,33 +700,64 @@ int main( int aArgc, char* aArgv[] ) try
 			draw_text_5x7_( surface, { rightX, topY + 52.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "2. CLEAR ENEMIES TO ADVANCE WAVES" );
 			draw_text_5x7_( surface, { rightX, topY + 76.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "3. EVERY 4TH WAVE SPAWNS A BOSS" );
 			draw_text_5x7_( surface, { rightX, topY + 100.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "4. SCORE UPGRADES YOUR FIREPOWER" );
-			draw_text_5x7_( surface, { rightX, topY + 136.f }, 2, ColorU8_sRGB{ 250, 210, 90 }, "WEAPON LEVELS" );
-			draw_text_5x7_( surface, { rightX, topY + 160.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "LV1 SINGLE SHOT" );
-			draw_text_5x7_( surface, { rightX, topY + 184.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "LV2 TRI SHOT" );
-			draw_text_5x7_( surface, { rightX, topY + 208.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "LV3 FAST FIRE AND HIGH DAMAGE" );
+			draw_text_5x7_( surface, { rightX, topY + 124.f }, 2, ColorU8_sRGB{ 250, 210, 90 }, "DIFFICULTY: 1 EASY  2 NORMAL  3 HARD" );
+			draw_text_5x7_( surface, { rightX, topY + 148.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "COUNTDOWN START + SHIELD BAR ENABLED" );
+			draw_text_5x7_( surface, { rightX, topY + 172.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "CLEARING WAVES RESTORES SHIELD" );
 
 			draw_rectangle_solid( surface, { pmin.x + 22.f, pmax.y - 56.f }, { pmax.x - 22.f, pmax.y - 24.f }, ColorU8_sRGB{ 36, 60, 120 } );
 			draw_rectangle_outline( surface, { pmin.x + 22.f, pmax.y - 56.f }, { pmax.x - 22.f, pmax.y - 24.f }, ColorU8_sRGB{ 170, 210, 255 } );
-			draw_text_5x7_( surface, { pmin.x + 120.f, pmax.y - 48.f }, 2, ColorU8_sRGB{ 250, 235, 140 }, "PRESS ENTER TO START   GOOD HUNTING PILOT" );
+			char difficultyHint[64] = {};
+			std::snprintf( difficultyHint, sizeof(difficultyHint), "PRESS ENTER TO START (%s)", state.difficulty == EDifficulty::easy ? "EASY" : (state.difficulty == EDifficulty::hard ? "HARD" : "NORMAL") );
+			draw_text_5x7_( surface, { pmin.x + 120.f, pmax.y - 48.f }, 2, ColorU8_sRGB{ 250, 235, 140 }, difficultyHint );
+		}
+
+		if( state.countdownActive && !state.showStartScreen && !state.gameOver )
+		{
+			draw_rectangle_solid(
+				surface,
+				{ fbwidth * 0.5f - 180.f, fbheight * 0.5f - 58.f },
+				{ fbwidth * 0.5f + 180.f, fbheight * 0.5f + 58.f },
+				ColorU8_sRGB{ 18, 26, 58 }
+			);
+			draw_rectangle_outline(
+				surface,
+				{ fbwidth * 0.5f - 180.f, fbheight * 0.5f - 58.f },
+				{ fbwidth * 0.5f + 180.f, fbheight * 0.5f + 58.f },
+				ColorU8_sRGB{ 170, 210, 255 }
+			);
+			int countValue = std::max( 1, int(std::ceil( state.countdownTime )) );
+			char countdownText[64] = {};
+			std::snprintf( countdownText, sizeof(countdownText), "MISSION START IN %d", countValue );
+			draw_text_5x7_( surface, { fbwidth * 0.5f - 146.f, fbheight * 0.5f - 10.f }, 3, ColorU8_sRGB{ 245, 232, 140 }, countdownText );
 		}
 
 		if( state.gameOver )
 		{
 			draw_rectangle_solid(
 				surface,
-				{ fbwidth * 0.5f - 170.f, fbheight * 0.5f - 25.f },
-				{ fbwidth * 0.5f + 170.f, fbheight * 0.5f + 25.f },
+				{ fbwidth * 0.5f - 170.f, fbheight * 0.5f - 35.f },
+				{ fbwidth * 0.5f + 170.f, fbheight * 0.5f + 35.f },
 				ColorU8_sRGB{ 120, 20, 20 }
 			);
+			draw_rectangle_outline(
+				surface,
+				{ fbwidth * 0.5f - 170.f, fbheight * 0.5f - 35.f },
+				{ fbwidth * 0.5f + 170.f, fbheight * 0.5f + 35.f },
+				ColorU8_sRGB{ 255, 120, 120 }
+			);
+			draw_text_5x7_( surface, { fbwidth * 0.5f - 110.f, fbheight * 0.5f - 24.f }, 4, ColorU8_sRGB{ 255, 230, 230 }, "GAME OVER" );
+			draw_text_5x7_( surface, { fbwidth * 0.5f - 116.f, fbheight * 0.5f + 10.f }, 2, ColorU8_sRGB{ 255, 180, 180 }, "PRESS R TO RESTART" );
 		}
 
 		context.draw( surface );
 
-		char title[256] = {};
+		char title[320] = {};
 		if( state.showStartScreen )
-			std::snprintf( title, sizeof(title), "%s | Start: ENTER | Toggle pilot: SPACE | Aim: Mouse | Thrust: W/UP or Right Mouse | Fire: Left Mouse", kWindowTitle );
+			std::snprintf( title, sizeof(title), "%s | Difficulty: %s (1/2/3) | Start: ENTER | Toggle pilot: SPACE | Aim: Mouse | Thrust: W/UP or Right Mouse | Fire: Left Mouse", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal") );
+		else if( state.countdownActive )
+			std::snprintf( title, sizeof(title), "%s | Difficulty: %s | Launch in %.1fs", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.countdownTime );
 		else
-			std::snprintf( title, sizeof(title), "%s | Score: %d | Lives: %d | Wave: %d | Weapon: Lv%d%s", kWindowTitle, state.score, state.lives, state.wave, state.weaponLevel, state.gameOver ? " | GAME OVER (R to restart)" : "" );
+			std::snprintf( title, sizeof(title), "%s | Score: %d | Lives: %d | Wave: %d | Weapon: Lv%d | Difficulty: %s%s", kWindowTitle, state.score, state.lives, state.wave, state.weaponLevel, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.gameOver ? " | GAME OVER (R to restart)" : "" );
 		glfwSetWindowTitle( window, title );
 
 		glfwSwapBuffers( window );
@@ -660,7 +799,18 @@ namespace
 
 		if( GLFW_KEY_ENTER == aKey && GLFW_PRESS == aAction )
 		{
-			state->showStartScreen = false;
+			if( state->showStartScreen )
+			{
+				state->showStartScreen = false;
+				state->gameStarted = true;
+				state->countdownActive = true;
+				state->countdownTime = kStartCountdownSeconds;
+				state->lives = std::max( 1, 3 + difficulty_extra_start_lives_( state->difficulty ) );
+				state->shieldMax = difficulty_start_shield_( state->difficulty );
+				state->shield = state->shieldMax;
+				state->shieldRegenRate = difficulty_shield_regen_rate_( state->difficulty );
+				state->shieldRegenCooldown = 1.2f;
+			}
 			state->inputMode = EInputMode::piloting;
 			glfwSetCursor( aWindow, state->crosshair );
 			return;
@@ -681,7 +831,17 @@ namespace
 		}
 
 		if( state->showStartScreen )
-			return;
+		{
+			if( GLFW_PRESS == aAction )
+			{
+				if( GLFW_KEY_1 == aKey || GLFW_KEY_KP_1 == aKey )
+					state->difficulty = EDifficulty::easy;
+				else if( GLFW_KEY_2 == aKey || GLFW_KEY_KP_2 == aKey )
+					state->difficulty = EDifficulty::normal;
+				else if( GLFW_KEY_3 == aKey || GLFW_KEY_KP_3 == aKey )
+					state->difficulty = EDifficulty::hard;
+			}
+		}
 
 		if( EInputMode::standard == state->inputMode )
 		{
@@ -715,7 +875,7 @@ namespace
 				else if( GLFW_RELEASE == aAct )
 					state->thrustMouseHeld = false;
 			}
-			if( GLFW_MOUSE_BUTTON_LEFT == aBut && GLFW_PRESS == aAct && !state->showStartScreen )
+			if( GLFW_MOUSE_BUTTON_LEFT == aBut && GLFW_PRESS == aAct && !state->showStartScreen && !state->countdownActive )
 			{
 				state->fireRequested = true;
 			}

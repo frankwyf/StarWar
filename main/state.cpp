@@ -14,6 +14,12 @@ void state_update( State& aState, float aDeltaSeconds )
 	if( aState.invulnerabilityTime > 0.f )
 		aState.invulnerabilityTime = std::max( 0.f, aState.invulnerabilityTime - aDeltaSeconds );
 
+	if( aState.countdownActive )
+		aState.countdownTime = std::max( 0.f, aState.countdownTime - aDeltaSeconds );
+
+	if( aState.shieldRegenCooldown > 0.f )
+		aState.shieldRegenCooldown = std::max( 0.f, aState.shieldRegenCooldown - aDeltaSeconds );
+
 	aState.player.accelerationMagnitude = (aState.thrustKeyHeld || aState.thrustMouseHeld) ? 500.f : 0.f;
 
 	if( aState.showStartScreen || aState.gameOver )

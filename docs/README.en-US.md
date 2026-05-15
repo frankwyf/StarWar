@@ -5,11 +5,13 @@ A small open-source 2D space shooter built with modern C++ and OpenGL/GLFW.
 ## What You Can Do In-Game
 
 - Pilot your ship with mouse aiming + thrust controls
+- Choose difficulty before each run (`Easy / Normal / Hard`)
+- Start each run with a short countdown instead of instant danger
 - Fight moving asteroids, including split asteroids
 - Battle enemy fighters that track and shoot at you
 - Defeat a boss every 4th wave
 - Progress through waves and weapon upgrades
-- Manage lives, invulnerability windows, and positioning
+- Manage lives, shield, invulnerability windows, and positioning
 
 ## Gameplay Rules (How to Have Fun)
 
@@ -27,7 +29,8 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 
 ### Controls
 
-- **Enter**: Start game from help screen
+- **1 / 2 / 3**: Select difficulty on start screen
+- **Enter**: Start game from help screen (with countdown)
 - **Mouse**: Aim ship direction
 - **Left Mouse**: Fire
 - **W** or **Up Arrow**: Thrust
@@ -56,12 +59,19 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 
 ## HUD / Feedback
 
-- Window title shows **Score / Lives / Wave / Weapon level**
+- Window title shows **Score / Lives / Wave / Weapon level / Difficulty**
 - Top-left: score progress bar
+- Top-left (second bar): shield bar
 - Top-right: life indicators
 - Bosses display a health bar over their ship
 
-## Build
+## Play Without Building (Recommended)
+
+1. Open the repository **Releases** page
+2. Download `StarWar-windows-x64.zip`
+3. Extract and run `StarWar.exe`
+
+## Build from Source
 
 ### Windows (Visual Studio)
 
@@ -75,6 +85,12 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 premake5 gmake2
 make config=release_x64
 ```
+
+## Automated Build and Release
+
+- Workflow file: `.github/workflows/release-windows.yml`
+- Every push to `main/master` builds a downloadable artifact
+- Tags like `v1.0.0` publish `StarWar-windows-x64.zip` to GitHub Releases
 
 ## Project Structure
 

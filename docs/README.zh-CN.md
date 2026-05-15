@@ -5,11 +5,13 @@
 ## 当前可玩内容
 
 - 鼠标瞄准 + 推进控制飞船
+- 开始前可选择难度（`简单 / 普通 / 困难`）
+- 开局有倒计时，不会直接进入战斗
 - 对抗陨石（含分裂陨石）
 - 对抗会追踪并射击玩家的敌机
 - 每 4 波出现 Boss
 - 波次推进与武器升级
-- 生命值、无敌时间、走位生存
+- 生命值 + 护盾 + 无敌时间 + 走位生存
 
 ## 游戏规则与玩法
 
@@ -27,7 +29,8 @@
 
 ### 操作
 
-- **Enter**：从帮助页开始
+- **1 / 2 / 3**：在开始页选择难度（简单/普通/困难）
+- **Enter**：从帮助页开始（进入倒计时）
 - **鼠标**：瞄准
 - **鼠标左键**：开火
 - **W / ↑**：推进
@@ -56,12 +59,19 @@
 
 ## HUD 信息
 
-- 窗口标题显示：**Score / Lives / Wave / Weapon**
+- 窗口标题显示：**Score / Lives / Wave / Weapon / Difficulty**
 - 左上：分数进度条
+- 左上第二条：护盾条
 - 右上：生命指示
 - Boss 头顶：血条
 
-## 构建
+## 玩家直接游玩（推荐）
+
+1. 打开 GitHub 的 **Releases** 页面
+2. 下载 `StarWar-windows-x64.zip`
+3. 解压后运行 `StarWar.exe`
+
+## 从源码构建
 
 ### Windows（Visual Studio）
 
@@ -75,6 +85,12 @@
 premake5 gmake2
 make config=release_x64
 ```
+
+## 自动构建与发布
+
+- 工作流文件：`.github/workflows/release-windows.yml`
+- 每次推送到 `main/master` 都会生成可下载构建产物
+- 打 `v1.0.0` 这类标签会自动发布 `StarWar-windows-x64.zip` 到 Releases
 
 ## 项目结构
 
