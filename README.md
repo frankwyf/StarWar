@@ -8,9 +8,9 @@ A small open-source 2D space shooter built with modern C++17, OpenGL, and GLFW.
 
 > Place screenshots under `docs/images/`.
 
-![Start Screen](docs/images/screenshot-start-screen.svg)
-![Combat](docs/images/screenshot-combat.svg)
-![Boss Wave](docs/images/screenshot-boss-wave.svg)
+![Start Screen](docs/images/screenshot-start-screen.png)
+![Combat](docs/images/screenshot-combat.png)
+![Boss Wave](docs/images/screenshot-boss-wave.png)
 
 ## Features
 
