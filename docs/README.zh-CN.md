@@ -37,6 +37,7 @@
 - **鼠标右键**：推进（可替代）
 - **Space**：切换驾驶模式
 - **R**：重开
+- **M**：切换音频开关
 - **Esc**：退出
 
 ### 战斗与成长
@@ -68,7 +69,7 @@
 ## 玩家直接游玩（推荐）
 
 1. 打开 GitHub 的 **Releases** 页面
-2. 下载 `StarWar-windows-x64.zip`
+2. 下载 `StarWar-<version>-Windows-Playable.zip`
 3. 解压后运行 `StarWar.exe`
 
 ## 从源码构建
@@ -90,7 +91,7 @@ make config=release_x64
 
 - 工作流文件：`.github/workflows/release-windows.yml`
 - 每次推送到 `main/master` 都会生成可下载构建产物
-- 打 `v1.0.0` 这类标签会自动发布 `StarWar-windows-x64.zip` 到 Releases
+- 打 `v1.0.0` 这类标签会自动发布 `StarWar-v1.0.0-Windows-Playable.zip` 到 Releases
 
 ## 项目结构
 

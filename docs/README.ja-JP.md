@@ -37,6 +37,7 @@
 - **右クリック**: 推進（代替）
 - **Space**: パイロットモード切替
 - **R**: リスタート
+- **M**: オーディオ ON/OFF 切替
 - **Esc**: 終了
 
 ### 戦闘と成長
@@ -68,7 +69,7 @@
 ## ビルド不要で遊ぶ（推奨）
 
 1. GitHub の **Releases** ページを開く
-2. `StarWar-windows-x64.zip` をダウンロード
+2. `StarWar-<version>-Windows-Playable.zip` をダウンロード
 3. 展開して `StarWar.exe` を実行
 
 ## ソースからビルド
@@ -90,7 +91,7 @@ make config=release_x64
 
 - ワークフローファイル: `.github/workflows/release-windows.yml`
 - `main/master` への push ごとに成果物を自動生成
-- `v1.0.0` のようなタグで `StarWar-windows-x64.zip` を Releases に自動公開
+- `v1.0.0` のようなタグで `StarWar-v1.0.0-Windows-Playable.zip` を Releases に自動公開
 
 ## プロジェクト構成
 

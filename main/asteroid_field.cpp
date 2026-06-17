@@ -86,7 +86,7 @@ void AsteroidField::update( float aElapsed, Vec2f const& aTransl )
 		auto& astr = mAsteroids[i];
 		astr.pos += astr.vel * aElapsed - aTransl;
 
-		if( astr.pos.x < mBoundsMin.x || astr.pos.x > mBoundsMax.x || astr.pos.y < mBoundsMin.y || astr.pos.y > mBoundsMax.x )
+		if( astr.pos.x < mBoundsMin.x || astr.pos.x > mBoundsMax.x || astr.pos.y < mBoundsMin.y || astr.pos.y > mBoundsMax.y )
 		{
 			respawn_asteroid_( i );
 		}

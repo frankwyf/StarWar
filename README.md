@@ -45,6 +45,7 @@ A small open-source 2D space shooter built with modern C++17, OpenGL, and GLFW.
 | Thrust | `W` / `Up Arrow` / Right mouse |
 | Toggle pilot mode | `Space` |
 | Restart run | `R` |
+| Toggle audio | `M` |
 | Quit | `Esc` |
 
 ## Build from Source (Developers)

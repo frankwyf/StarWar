@@ -35,7 +35,8 @@ void Background::draw( Surface& aSurface )
 		pf.draw( aSurface );
 
 	// Draw earth sprite
-	blit_masked( aSurface, *mEarthSprite, kEarthCoord - mCurrentPosition );
+	if( mEarthSprite )
+		blit_masked( aSurface, *mEarthSprite, kEarthCoord - mCurrentPosition );
 
 	// Draw near field = dirt layer
 	mNearField.draw( aSurface );

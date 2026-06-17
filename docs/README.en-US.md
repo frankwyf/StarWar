@@ -37,6 +37,7 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 - **Right Mouse**: Thrust (alternative)
 - **Space**: Toggle pilot mode
 - **R**: Restart run
+- **M**: Toggle audio on/off
 - **Esc**: Quit
 
 ### Combat and Progression
@@ -68,7 +69,7 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 ## Play Without Building (Recommended)
 
 1. Open the repository **Releases** page
-2. Download `StarWar-windows-x64.zip`
+2. Download `StarWar-<version>-Windows-Playable.zip`
 3. Extract and run `StarWar.exe`
 
 ## Build from Source
@@ -90,7 +91,7 @@ make config=release_x64
 
 - Workflow file: `.github/workflows/release-windows.yml`
 - Every push to `main/master` builds a downloadable artifact
-- Tags like `v1.0.0` publish `StarWar-windows-x64.zip` to GitHub Releases
+- Tags like `v1.0.0` publish `StarWar-v1.0.0-Windows-Playable.zip` to GitHub Releases
 
 ## Project Structure
 

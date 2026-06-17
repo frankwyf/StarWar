@@ -4,10 +4,13 @@
 #include <random>
 #include <typeinfo>
 #include <stdexcept>
+
 #include <vector>
 #include <algorithm>
 #include <string_view>
 #include <cctype>
+#include <cmath>
+#include <thread>
 
 #include <cstdio>
 #include <cstdlib>
@@ -50,6 +53,31 @@ namespace
 	constexpr float kEnemyBulletSpeed = 300.f;
 	constexpr float kPlayerBulletHitRadius = 12.f;
 	constexpr float kStartCountdownSeconds = 3.f;
+	constexpr float kComboWindowSeconds = 3.5f;
+	constexpr float kRapidFireDuration = 6.0f;
+
+	enum class EnemyArchetype
+	{
+		fighter,
+		strafer,
+		rusher
+	};
+
+	enum class PickupType
+	{
+		shield,
+		rapidfire
+	};
+
+	enum class AudioEvent
+	{
+		fire,
+		hit,
+		enemyDown,
+		bossSpawn,
+		pickup,
+		playerDown
+	};
 
 	char const* safe_cstr_( char const* aText ) noexcept
 	{
@@ -144,6 +172,25 @@ namespace
 		float fireCooldown = 0.f;
 		float hp = 1.f;
 		bool boss = false;
+		EnemyArchetype archetype = EnemyArchetype::fighter;
+		float aiTimer = 0.f;
+	};
+
+	struct Pickup
+	{
+		Vec2f pos;
+		Vec2f vel;
+		float life = 9.f;
+		PickupType type = PickupType::shield;
+	};
+
+	struct FxParticle
+	{
+		Vec2f pos;
+		Vec2f vel;
+		float life = 0.f;
+		float maxLife = 0.f;
+		ColorU8_sRGB color;
 	};
 
 	struct GLFWCleanupHelper
@@ -155,6 +202,52 @@ namespace
 		~GLFWWindowDeleter();
 		GLFWwindow* window;
 	};
+
+	void play_audio_event_( AudioEvent aEvent, bool aEnabled )
+	{
+		if( !aEnabled )
+			return;
+
+#if defined(_WIN32)
+		UINT beepType = MB_OK;
+		switch( aEvent )
+		{
+		case AudioEvent::fire: beepType = MB_OK; break;
+		case AudioEvent::hit: beepType = MB_ICONHAND; break;
+		case AudioEvent::enemyDown: beepType = MB_ICONASTERISK; break;
+		case AudioEvent::bossSpawn: beepType = MB_ICONEXCLAMATION; break;
+		case AudioEvent::pickup: beepType = MB_ICONINFORMATION; break;
+		case AudioEvent::playerDown: beepType = MB_ICONHAND; break;
+		default: break;
+		}
+		std::thread( [beepType] { MessageBeep( beepType ); } ).detach();
+#else
+		(void)aEvent;
+#endif
+	}
+
+	void spawn_burst_fx_( std::vector<FxParticle>& aFx, Vec2f aPos, ColorU8_sRGB aColor, int aCount, float aSpeed, RNG& aRng )
+	{
+		std::uniform_real_distribution<float> ang( 0.f, 6.2831853f );
+		std::uniform_real_distribution<float> mag( 0.35f, 1.0f );
+		for( int i = 0; i < aCount; ++i )
+		{
+			float const t = ang( aRng );
+			float const m = mag( aRng ) * aSpeed;
+			aFx.push_back( FxParticle{
+				aPos,
+				Vec2f{ std::cos( t ) * m, std::sin( t ) * m },
+				0.45f,
+				0.45f,
+				aColor
+			} );
+		}
+	}
+
+	int combo_multiplier_( int comboCount )
+	{
+		return std::clamp( 1 + comboCount / 4, 1, 5 );
+	}
 
 	const char* glyph5x7_( char c )
 	{
@@ -229,6 +322,141 @@ namespace
 			x += float(6 * scale);
 		}
 	}
+
+	void glfw_callback_error_( int aErrNum, char const* aErrDesc )
+	{
+		std::fprintf( stderr, "GLFW error: %s (%d)\n", safe_cstr_(aErrDesc), aErrNum );
+	}
+
+	void glfw_callback_key_( GLFWwindow* aWindow, int aKey, int, int aAction, int )
+	{
+		if( GLFW_KEY_ESCAPE == aKey && GLFW_PRESS == aAction )
+		{
+			glfwSetWindowShouldClose( aWindow, GLFW_TRUE );
+			return;
+		}
+
+		auto* state = static_cast<State*>(glfwGetWindowUserPointer( aWindow ));
+		assert( state );
+
+		if( GLFW_KEY_M == aKey && GLFW_PRESS == aAction )
+		{
+			state->audioEnabled = !state->audioEnabled;
+			return;
+		}
+
+		if( GLFW_KEY_ENTER == aKey && GLFW_PRESS == aAction )
+		{
+			if( state->showStartScreen )
+			{
+				state->showStartScreen = false;
+				state->gameStarted = true;
+				state->countdownActive = true;
+				state->countdownTime = kStartCountdownSeconds;
+				state->lives = std::max( 1, 3 + difficulty_extra_start_lives_( state->difficulty ) );
+				state->shieldMax = difficulty_start_shield_( state->difficulty );
+				state->shield = state->shieldMax;
+				state->shieldRegenRate = difficulty_shield_regen_rate_( state->difficulty );
+				state->shieldRegenCooldown = 1.2f;
+				play_audio_event_( AudioEvent::bossSpawn, state->audioEnabled );
+			}
+			state->inputMode = EInputMode::piloting;
+			glfwSetCursor( aWindow, state->crosshair );
+			return;
+		}
+
+		if( GLFW_KEY_R == aKey && GLFW_PRESS == aAction )
+		{
+			state->restartRequested = true;
+			play_audio_event_( AudioEvent::pickup, state->audioEnabled );
+			return;
+		}
+
+		if( GLFW_KEY_W == aKey || GLFW_KEY_UP == aKey )
+		{
+			if( GLFW_PRESS == aAction )
+				state->thrustKeyHeld = true;
+			else if( GLFW_RELEASE == aAction )
+				state->thrustKeyHeld = false;
+		}
+
+		if( state->showStartScreen )
+		{
+			if( GLFW_PRESS == aAction )
+			{
+				if( GLFW_KEY_1 == aKey || GLFW_KEY_KP_1 == aKey )
+					state->difficulty = EDifficulty::easy;
+				else if( GLFW_KEY_2 == aKey || GLFW_KEY_KP_2 == aKey )
+					state->difficulty = EDifficulty::normal;
+				else if( GLFW_KEY_3 == aKey || GLFW_KEY_KP_3 == aKey )
+					state->difficulty = EDifficulty::hard;
+			}
+		}
+
+		if( EInputMode::standard == state->inputMode )
+		{
+			if( GLFW_KEY_SPACE == aKey && GLFW_PRESS == aAction )
+			{
+				state->inputMode = EInputMode::piloting;
+				glfwSetCursor( aWindow, state->crosshair );
+			}
+		}
+		else if( EInputMode::piloting == state->inputMode )
+		{
+			if( GLFW_KEY_SPACE == aKey && GLFW_PRESS == aAction )
+			{
+				state->inputMode = EInputMode::standard;
+				glfwSetCursor( aWindow, nullptr );
+			}
+		}
+	}
+
+	void glfw_callback_button_( GLFWwindow* aWindow, int aBut, int aAct, int )
+	{
+		auto* state = static_cast<State*>(glfwGetWindowUserPointer( aWindow ));
+		assert( state );
+
+		if( EInputMode::piloting == state->inputMode )
+		{
+			if( GLFW_MOUSE_BUTTON_RIGHT == aBut )
+			{
+				if( GLFW_PRESS == aAct )
+					state->thrustMouseHeld = true;
+				else if( GLFW_RELEASE == aAct )
+					state->thrustMouseHeld = false;
+			}
+			if( GLFW_MOUSE_BUTTON_LEFT == aBut && GLFW_PRESS == aAct && !state->showStartScreen && !state->countdownActive )
+			{
+				state->fireRequested = true;
+			}
+		}
+	}
+
+	void glfw_callback_motion_( GLFWwindow* aWindow, double aX, double aY )
+	{
+		auto* state = static_cast<State*>(glfwGetWindowUserPointer( aWindow ));
+		assert( state );
+
+		int iwidth, iheight;
+		glfwGetFramebufferSize( aWindow, &iwidth, &iheight );
+
+		if( EInputMode::piloting == state->inputMode )
+		{
+			Vec2f relative{ float(aX) - iwidth/2.f, iheight/2.f - float(aY) };
+			state->player.angle = std::atan2( relative.y, relative.x );
+		}
+	}
+
+	GLFWCleanupHelper::~GLFWCleanupHelper()
+	{
+		glfwTerminate();
+	}
+
+	GLFWWindowDeleter::~GLFWWindowDeleter()
+	{
+		if( window )
+			glfwDestroyWindow( window );
+	}
 }
 
 int main( int aArgc, char* aArgv[] ) try
@@ -300,6 +528,10 @@ int main( int aArgc, char* aArgv[] ) try
 	bullets.reserve( 256 );
 	std::vector<Enemy> enemies;
 	enemies.reserve( 16 );
+	std::vector<Pickup> pickups;
+	pickups.reserve( 16 );
+	std::vector<FxParticle> fx;
+	fx.reserve( 256 );
 	std::uniform_real_distribution<float> unit01( 0.f, 1.f );
 
 	// Cursors
@@ -412,14 +644,18 @@ int main( int aArgc, char* aArgv[] ) try
 		{
 			auto* cursor = state.crosshair;
 			auto const selectedDifficulty = state.difficulty;
+			auto const audioEnabled = state.audioEnabled;
 			state = State{};
 			state.crosshair = cursor;
 			state.difficulty = selectedDifficulty;
+			state.audioEnabled = audioEnabled;
 			state.inputMode = EInputMode::piloting;
 			state.showStartScreen = true;
 			glfwSetCursor( window, nullptr );
 			bullets.clear();
 			enemies.clear();
+			pickups.clear();
+			fx.clear();
 		}
 
 		state_update( state, dt );
@@ -442,6 +678,10 @@ int main( int aArgc, char* aArgv[] ) try
 				bullets.push_back( Bullet{ muzzle, (rrot * dir) * (kBulletSpeed * 0.9f), kBulletLife, false } );
 			}
 			state.fireCooldown = state.weaponLevel >= 3 ? 0.09f : 0.18f;
+			if( state.rapidFireTime > 0.f )
+				state.fireCooldown *= 0.45f;
+			spawn_burst_fx_( fx, muzzle, ColorU8_sRGB{ 255, 220, 120 }, 3, 120.f, rng );
+			play_audio_event_( AudioEvent::fire, state.audioEnabled );
 		}
 		state.fireRequested = false;
 
@@ -459,6 +699,10 @@ int main( int aArgc, char* aArgv[] ) try
 				boss.fireCooldown = 1.0f * enemyFireScale;
 				enemies.push_back( boss );
 				state.bossSpawned = true;
+				state.waveBannerTime = 2.2f;
+				state.screenShakeTime = std::max( state.screenShakeTime, 0.35f );
+				state.screenShakeStrength = std::max( state.screenShakeStrength, 6.f );
+				play_audio_event_( AudioEvent::bossSpawn, state.audioEnabled );
 			}
 			else
 			{
@@ -471,12 +715,34 @@ int main( int aArgc, char* aArgv[] ) try
 					e.vel = { ((i % 2 == 0 ? 100.f : -100.f) * (1.f + 0.06f * state.wave)) * enemySpeedScale, ((unit01(rng) - 0.5f) * 30.f) * enemySpeedScale };
 					e.fireCooldown = (0.5f + unit01(rng)) * enemyFireScale;
 					e.hp = 1.f;
+					float const roll = unit01( rng );
+					if( roll < 0.22f )
+					{
+						e.archetype = EnemyArchetype::rusher;
+						e.hp = 1.2f;
+					}
+					else if( roll < 0.52f )
+					{
+						e.archetype = EnemyArchetype::strafer;
+						e.fireCooldown *= 0.85f;
+					}
 					enemies.push_back( e );
 				}
 			}
 		}
 
-		if( !state.showStartScreen && !state.countdownActive )
+		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && enemies.empty() )
+		{
+			++state.wave;
+			if( state.wave >= 2 ) state.weaponLevel = 2;
+			if( state.wave >= 4 ) state.weaponLevel = 3;
+			state.shield = std::min( state.shieldMax, state.shield + 22.f );
+			state.waveBannerTime = 2.0f;
+			state.screenShakeTime = std::max( state.screenShakeTime, 0.08f );
+			state.screenShakeStrength = std::max( state.screenShakeStrength, 1.8f );
+		}
+
+		if( !state.showStartScreen && !state.gameOver && !state.countdownActive )
 		{
 			auto const enemySpeedScale = difficulty_enemy_speed_scale_( state.difficulty );
 			auto const enemyFireScale = difficulty_enemy_fire_scale_( state.difficulty );
@@ -491,6 +757,7 @@ int main( int aArgc, char* aArgv[] ) try
 				e.angle = std::atan2( toPlayer.y, toPlayer.x );
 
 				e.pos += e.vel * state.thisFrame.dt - state.thisFrame.movement;
+				e.aiTimer += state.thisFrame.dt;
 				if( e.boss )
 				{
 					e.pos.y += std::sin( now.time_since_epoch().count() * 1e-9f * 2.f ) * 20.f * state.thisFrame.dt;
@@ -507,13 +774,37 @@ int main( int aArgc, char* aArgv[] ) try
 				}
 				else
 				{
+					if( e.archetype == EnemyArchetype::strafer )
+					{
+						Vec2f perp{ -toPlayer.y, toPlayer.x };
+						e.vel += perp * (120.f * state.thisFrame.dt * enemySpeedScale);
+					}
+					else if( e.archetype == EnemyArchetype::rusher )
+					{
+						if( e.aiTimer > 1.4f )
+						{
+							e.vel += toPlayer * (200.f * enemySpeedScale);
+							e.aiTimer = 0.f;
+						}
+					}
+
+					e.vel.x = std::clamp( e.vel.x, -260.f * enemySpeedScale, 260.f * enemySpeedScale );
+					e.vel.y = std::clamp( e.vel.y, -260.f * enemySpeedScale, 260.f * enemySpeedScale );
+
 					e.fireCooldown -= state.thisFrame.dt;
 					if( e.fireCooldown <= 0.f )
 					{
 						float jitter = (unit01(rng) - 0.5f) * 0.30f;
 						Mat22f miss = make_rotation_2d( jitter );
 						bullets.push_back( Bullet{ e.pos, (miss * toPlayer) * (kEnemyBulletSpeed * 0.95f * enemySpeedScale), 1.9f, true } );
+						if( e.archetype == EnemyArchetype::strafer )
+						{
+							Mat22f side = make_rotation_2d( 0.18f );
+							bullets.push_back( Bullet{ e.pos, (side * (miss * toPlayer)) * (kEnemyBulletSpeed * 0.82f * enemySpeedScale), 1.7f, true } );
+						}
 						e.fireCooldown = (1.35f + unit01(rng) * 0.7f) * enemyFireScale;
+						if( e.archetype == EnemyArchetype::rusher )
+							e.fireCooldown *= 1.25f;
 					}
 				}
 			}
@@ -530,7 +821,8 @@ int main( int aArgc, char* aArgv[] ) try
 				auto const hits = asteroids.hit_test_and_destroy( it->pos, kBulletRadius );
 				if( hits > 0 )
 				{
-					state.score += int(hits) * 10;
+					state.score += int(hits) * 10 * combo_multiplier_( state.comboCount );
+					spawn_burst_fx_( fx, it->pos, ColorU8_sRGB{ 180, 180, 180 }, int(hits) * 2, 150.f, rng );
 					consumed = true;
 				}
 				for( auto eit = enemies.begin(); eit != enemies.end() && !consumed; )
@@ -541,9 +833,24 @@ int main( int aArgc, char* aArgv[] ) try
 					{
 						eit->hp -= state.weaponLevel >= 3 ? 1.4f : 1.f;
 						consumed = true;
+						spawn_burst_fx_( fx, it->pos, ColorU8_sRGB{ 255, 140, 90 }, eit->boss ? 7 : 4, eit->boss ? 180.f : 120.f, rng );
 						if( eit->hp <= 0.f )
 						{
-							state.score += eit->boss ? 300 : 40;
+							++state.comboCount;
+							state.comboTimer = kComboWindowSeconds;
+							state.score += (eit->boss ? 300 : 40) * combo_multiplier_( state.comboCount );
+							if( !eit->boss && unit01(rng) < 0.28f )
+							{
+								pickups.push_back( Pickup{
+									eit->pos,
+									Vec2f{ (unit01(rng)-0.5f) * 90.f, (unit01(rng)-0.5f) * 90.f },
+									9.f,
+									unit01(rng) < 0.55f ? PickupType::shield : PickupType::rapidfire
+								} );
+							}
+							play_audio_event_( AudioEvent::enemyDown, state.audioEnabled );
+							state.screenShakeTime = std::max( state.screenShakeTime, eit->boss ? 0.35f : 0.12f );
+							state.screenShakeStrength = std::max( state.screenShakeStrength, eit->boss ? 9.f : 3.f );
 							eit = enemies.erase( eit );
 						}
 						else
@@ -558,33 +865,91 @@ int main( int aArgc, char* aArgv[] ) try
 				}
 			}
 			else if( !state.showStartScreen && !state.gameOver && !state.countdownActive && state.invulnerabilityTime <= 0.f && it->enemy )
+			{
+				auto d = it->pos - Vec2f{ fbwidth*0.5f, fbheight*0.5f };
+				if( dot(d,d) <= kPlayerBulletHitRadius * kPlayerBulletHitRadius )
 				{
-					auto d = it->pos - Vec2f{ fbwidth*0.5f, fbheight*0.5f };
-					if( dot(d,d) <= kPlayerBulletHitRadius * kPlayerBulletHitRadius )
+					if( state.shield > 0.f )
 					{
-						if( state.shield > 0.f )
-						{
-							state.shield = std::max( 0.f, state.shield - 22.f );
-							state.shieldRegenCooldown = 1.8f;
-							state.invulnerabilityTime = 0.2f;
-						}
-						else
-						{
-							--state.lives;
-							state.invulnerabilityTime = kRespawnInvulnerability;
-							state.player.velocity = { 0.f, 0.f };
-							if( state.lives <= 0 )
-								state.gameOver = true;
-						}
-						consumed = true;
+						state.shield = std::max( 0.f, state.shield - 22.f );
+						state.shieldRegenCooldown = 1.8f;
+						state.invulnerabilityTime = 0.2f;
+						state.hitFlashTime = 0.12f;
+						state.screenShakeTime = std::max( state.screenShakeTime, 0.1f );
+						state.screenShakeStrength = std::max( state.screenShakeStrength, 2.8f );
+						play_audio_event_( AudioEvent::hit, state.audioEnabled );
 					}
+					else
+					{
+						--state.lives;
+						state.invulnerabilityTime = kRespawnInvulnerability;
+						state.player.velocity = { 0.f, 0.f };
+						state.hitFlashTime = 0.18f;
+						state.screenShakeTime = std::max( state.screenShakeTime, 0.2f );
+						state.screenShakeStrength = std::max( state.screenShakeStrength, 4.8f );
+						play_audio_event_( AudioEvent::playerDown, state.audioEnabled );
+						if( state.lives <= 0 )
+							state.gameOver = true;
+					}
+					consumed = true;
 				}
+			}
 
 			if( it->life <= 0.f || consumed )
 				it = bullets.erase( it );
 			else
 				++it;
 		}
+
+		for( auto pit = pickups.begin(); pit != pickups.end(); )
+		{
+			pit->life -= state.thisFrame.dt;
+			pit->pos += pit->vel * state.thisFrame.dt - state.thisFrame.movement;
+			pit->vel *= 0.98f;
+
+			bool consumed = false;
+			if( !state.showStartScreen && !state.gameOver && !state.countdownActive )
+			{
+				auto const d = pit->pos - Vec2f{ fbwidth * 0.5f, fbheight * 0.5f };
+				if( dot( d, d ) <= 22.f * 22.f )
+				{
+					if( pit->type == PickupType::shield )
+					{
+						state.shield = std::min( state.shieldMax, state.shield + 26.f );
+					}
+					else
+					{
+						state.rapidFireTime = std::max( state.rapidFireTime, kRapidFireDuration );
+					}
+					state.waveBannerTime = std::max( state.waveBannerTime, 1.0f );
+					play_audio_event_( AudioEvent::pickup, state.audioEnabled );
+					spawn_burst_fx_( fx, pit->pos, ColorU8_sRGB{ 130, 230, 255 }, 8, 130.f, rng );
+					consumed = true;
+				}
+			}
+
+			if( pit->life <= 0.f || consumed )
+				pit = pickups.erase( pit );
+			else
+				++pit;
+		}
+
+		for( auto fit = fx.begin(); fit != fx.end(); )
+		{
+			fit->life -= state.thisFrame.dt;
+			fit->pos += fit->vel * state.thisFrame.dt - state.thisFrame.movement;
+			fit->vel *= 0.93f;
+			if( fit->life <= 0.f )
+				fit = fx.erase( fit );
+			else
+				++fit;
+		}
+
+		if( fx.size() > 1200 )
+			fx.erase( fx.begin(), fx.begin() + (fx.size() - 1200) );
+
+		if( pickups.size() > 120 )
+			pickups.erase( pickups.begin(), pickups.begin() + (pickups.size() - 120) );
 
 		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && state.shieldRegenCooldown <= 0.f && state.shield < state.shieldMax )
 		{
@@ -598,17 +963,26 @@ int main( int aArgc, char* aArgv[] ) try
 		{
 			auto absorb_or_hit_life = [&]( float shieldDamage )
 			{
+				state.comboCount = 0;
+				state.comboTimer = 0.f;
+				state.hitFlashTime = 0.15f;
 				if( state.shield > 0.f )
 				{
 					state.shield = std::max( 0.f, state.shield - shieldDamage );
 					state.shieldRegenCooldown = 2.0f;
 					state.invulnerabilityTime = 0.24f;
+					state.screenShakeTime = std::max( state.screenShakeTime, 0.12f );
+					state.screenShakeStrength = std::max( state.screenShakeStrength, 3.5f );
+					play_audio_event_( AudioEvent::hit, state.audioEnabled );
 				}
 				else
 				{
 					--state.lives;
 					state.invulnerabilityTime = kRespawnInvulnerability;
 					state.player.velocity = { 0.f, 0.f };
+					state.screenShakeTime = std::max( state.screenShakeTime, 0.2f );
+					state.screenShakeStrength = std::max( state.screenShakeStrength, 5.f );
+					play_audio_event_( AudioEvent::playerDown, state.audioEnabled );
 					if( state.lives <= 0 )
 						state.gameOver = true;
 				}
@@ -636,6 +1010,16 @@ int main( int aArgc, char* aArgv[] ) try
 			if( state.wave >= 2 ) state.weaponLevel = 2;
 			if( state.wave >= 4 ) state.weaponLevel = 3;
 			state.shield = std::min( state.shieldMax, state.shield + 22.f );
+			state.waveBannerTime = 2.0f;
+			state.screenShakeTime = std::max( state.screenShakeTime, 0.08f );
+			state.screenShakeStrength = std::max( state.screenShakeStrength, 1.8f );
+		}
+
+		Vec2f renderShake{ 0.f, 0.f };
+		if( state.screenShakeTime > 0.f && state.screenShakeStrength > 0.f )
+		{
+			std::uniform_real_distribution<float> shakeDist( -state.screenShakeStrength, state.screenShakeStrength );
+			renderShake = { shakeDist( rng ), shakeDist( rng ) };
 		}
 
 		// Draw scene
@@ -646,12 +1030,16 @@ int main( int aArgc, char* aArgv[] ) try
 		for( auto const& e : enemies )
 		{
 			auto const er = make_rotation_2d( e.angle );
-			auto const ec = e.boss ? ColorF{ 0.8f, 0.2f, 0.2f } : ColorF{ 0.8f, 0.5f, 0.2f };
-			spaceship.draw( surface, ec, er, e.pos );
+			ColorF ec = e.boss ? ColorF{ 0.8f, 0.2f, 0.2f } : ColorF{ 0.8f, 0.5f, 0.2f };
+			if( !e.boss && e.archetype == EnemyArchetype::strafer )
+				ec = ColorF{ 0.85f, 0.65f, 0.25f };
+			if( !e.boss && e.archetype == EnemyArchetype::rusher )
+				ec = ColorF{ 0.9f, 0.38f, 0.3f };
+			spaceship.draw( surface, ec, er, e.pos + renderShake );
 			if( e.boss )
 			{
-				draw_rectangle_outline( surface, e.pos + Vec2f{-40.f,-46.f}, e.pos + Vec2f{40.f,-40.f}, ColorU8_sRGB{200,200,200} );
-				draw_rectangle_solid( surface, e.pos + Vec2f{-38.f,-44.f}, e.pos + Vec2f{-38.f + 76.f * (e.hp/(14.f + state.wave)), -42.f}, ColorU8_sRGB{220,80,80} );
+				draw_rectangle_outline( surface, e.pos + renderShake + Vec2f{-40.f,-46.f}, e.pos + renderShake + Vec2f{40.f,-40.f}, ColorU8_sRGB{200,200,200} );
+				draw_rectangle_solid( surface, e.pos + renderShake + Vec2f{-38.f,-44.f}, e.pos + renderShake + Vec2f{-38.f + 76.f * (e.hp/(14.f + state.wave)), -42.f}, ColorU8_sRGB{220,80,80} );
 			}
 		}
 
@@ -659,14 +1047,26 @@ int main( int aArgc, char* aArgv[] ) try
 		{
 			draw_rectangle_solid(
 				surface,
-				bullet.pos - Vec2f{ 2.f, 2.f },
-				bullet.pos + Vec2f{ 2.f, 2.f },
+				bullet.pos + renderShake - Vec2f{ 2.f, 2.f },
+				bullet.pos + renderShake + Vec2f{ 2.f, 2.f },
 				bullet.enemy ? ColorU8_sRGB{ 255, 90, 90 } : ColorU8_sRGB{ 255, 230, 120 }
 			);
 		}
 
+		for( auto const& p : pickups )
+		{
+			ColorU8_sRGB c = p.type == PickupType::shield ? ColorU8_sRGB{ 90, 190, 255 } : ColorU8_sRGB{ 255, 220, 110 };
+			draw_rectangle_outline( surface, p.pos + renderShake - Vec2f{ 8.f, 8.f }, p.pos + renderShake + Vec2f{ 8.f, 8.f }, c );
+			draw_rectangle_solid( surface, p.pos + renderShake - Vec2f{ 5.f, 5.f }, p.pos + renderShake + Vec2f{ 5.f, 5.f }, c );
+		}
+
+		for( auto const& p : fx )
+		{
+			draw_rectangle_solid( surface, p.pos + renderShake - Vec2f{ 1.f, 1.f }, p.pos + renderShake + Vec2f{ 1.f, 1.f }, p.color );
+		}
+
 		auto const rot = make_rotation_2d( state.player.angle );
-		auto const offs = Vec2f{ fbwidth*0.5f, fbheight*0.5f };
+		auto const offs = Vec2f{ fbwidth*0.5f, fbheight*0.5f } + renderShake;
 		auto const shipColor = state.invulnerabilityTime > 0.f
 			? ColorF{ 0.9f, 0.8f, 0.2f }
 			: ColorF{ 0.2f, 0.4f, 0.7f };
@@ -681,10 +1081,26 @@ int main( int aArgc, char* aArgv[] ) try
 		draw_rectangle_solid( surface, { 22.f, 44.f }, { 22.f + 196.f * shieldRatio, 56.f }, ColorU8_sRGB{ 70, 140, 240 } );
 		draw_text_5x7_( surface, { 226.f, 45.f }, 1, ColorU8_sRGB{ 160, 200, 255 }, "SHIELD" );
 
-		for( int i = 0; i < state.lives; ++i )
+		if( state.comboCount > 1 && state.comboTimer > 0.f )
 		{
-			float x0 = float(fbwidth) - 22.f - i * 22.f;
-			draw_rectangle_solid( surface, { x0 - 14.f, 20.f }, { x0, 34.f }, ColorU8_sRGB{ 220, 80, 80 } );
+			char comboText[64] = {};
+			std::snprintf( comboText, sizeof(comboText), "COMBO x%d", combo_multiplier_( state.comboCount ) );
+			draw_text_5x7_( surface, { 20.f, 64.f }, 2, ColorU8_sRGB{ 255, 210, 110 }, comboText );
+		}
+		if( state.rapidFireTime > 0.f )
+		{
+			char rapidText[64] = {};
+			std::snprintf( rapidText, sizeof(rapidText), "RAPID FIRE %.1fs", state.rapidFireTime );
+			draw_text_5x7_( surface, { 20.f, 86.f }, 2, ColorU8_sRGB{ 255, 240, 140 }, rapidText );
+		}
+
+		if( state.lives > 0 )
+		{
+			for( int i = 0; i < state.lives; ++i )
+			{
+				float x0 = float(fbwidth) - 22.f - i * 22.f;
+				draw_rectangle_solid( surface, { x0 - 14.f, 20.f }, { x0, 34.f }, ColorU8_sRGB{ 220, 80, 80 } );
+			}
 		}
 
 		if( state.showStartScreen )
@@ -712,7 +1128,7 @@ int main( int aArgc, char* aArgv[] ) try
 			draw_text_5x7_( surface, { leftX, topY + 100.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "W OR UP: THRUST" );
 			draw_text_5x7_( surface, { leftX, topY + 124.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "RIGHT MOUSE: THRUST" );
 			draw_text_5x7_( surface, { leftX, topY + 148.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "SPACE: TOGGLE PILOT MODE" );
-			draw_text_5x7_( surface, { leftX, topY + 172.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "R: RESTART   ESC: QUIT" );
+			draw_text_5x7_( surface, { leftX, topY + 172.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "R: RESTART  M: AUDIO  ESC: QUIT" );
 
 			draw_text_5x7_( surface, { rightX, topY }, 2, ColorU8_sRGB{ 170, 210, 255 }, "GAMEPLAY LOOP" );
 			draw_text_5x7_( surface, { rightX, topY + 28.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "1. SURVIVE ASTEROIDS AND ENEMY FIRE" );
@@ -768,15 +1184,33 @@ int main( int aArgc, char* aArgv[] ) try
 			draw_text_5x7_( surface, { fbwidth * 0.5f - 116.f, fbheight * 0.5f + 10.f }, 2, ColorU8_sRGB{ 255, 180, 180 }, "PRESS R TO RESTART" );
 		}
 
+		if( state.waveBannerTime > 0.f && !state.showStartScreen && !state.gameOver )
+		{
+			char waveText[64] = {};
+			if( state.wave % 4 == 0 )
+				std::snprintf( waveText, sizeof(waveText), "BOSS WAVE %d", state.wave );
+			else
+				std::snprintf( waveText, sizeof(waveText), "WAVE %d", state.wave );
+			draw_rectangle_solid( surface, { fbwidth * 0.5f - 120.f, fbheight - 72.f }, { fbwidth * 0.5f + 120.f, fbheight - 40.f }, ColorU8_sRGB{ 24, 36, 72 } );
+			draw_rectangle_outline( surface, { fbwidth * 0.5f - 120.f, fbheight - 72.f }, { fbwidth * 0.5f + 120.f, fbheight - 40.f }, ColorU8_sRGB{ 140, 190, 255 } );
+			draw_text_5x7_( surface, { fbwidth * 0.5f - 86.f, fbheight - 64.f }, 2, ColorU8_sRGB{ 240, 240, 180 }, waveText );
+		}
+
+		if( state.hitFlashTime > 0.f )
+		{
+			std::uint8_t const alphaTint = static_cast<std::uint8_t>( std::clamp( state.hitFlashTime * 1200.f, 24.f, 90.f ) );
+			draw_rectangle_solid( surface, { 0.f, 0.f }, { float(fbwidth), float(fbheight) }, ColorU8_sRGB{ alphaTint, 28, 28 } );
+		}
+
 		context.draw( surface );
 
 		char title[320] = {};
 		if( state.showStartScreen )
-			std::snprintf( title, sizeof(title), "%s | Difficulty: %s (1/2/3) | Start: ENTER | Toggle pilot: SPACE | Aim: Mouse | Thrust: W/UP or Right Mouse | Fire: Left Mouse", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal") );
+			std::snprintf( title, sizeof(title), "%s | Difficulty: %s (1/2/3) | Start: ENTER | Toggle pilot: SPACE | Aim: Mouse | Thrust: W/UP or Right Mouse | Fire: Left Mouse | Audio: %s (M)", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.audioEnabled ? "On" : "Off" );
 		else if( state.countdownActive )
-			std::snprintf( title, sizeof(title), "%s | Difficulty: %s | Launch in %.1fs", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.countdownTime );
+			std::snprintf( title, sizeof(title), "%s | Difficulty: %s | Launch in %.1fs | Audio: %s", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.countdownTime, state.audioEnabled ? "On" : "Off" );
 		else
-			std::snprintf( title, sizeof(title), "%s | Score: %d | Lives: %d | Wave: %d | Weapon: Lv%d | Difficulty: %s%s", kWindowTitle, state.score, state.lives, state.wave, state.weaponLevel, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.gameOver ? " | GAME OVER (R to restart)" : "" );
+			std::snprintf( title, sizeof(title), "%s | Score: %d | Lives: %d | Wave: %d | Weapon: Lv%d | Combo x%d | Rapid %.1fs | Difficulty: %s | Audio: %s%s", kWindowTitle, state.score, state.lives, state.wave, state.weaponLevel, combo_multiplier_(state.comboCount), state.rapidFireTime, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.audioEnabled ? "On" : "Off", state.gameOver ? " | GAME OVER (R to restart)" : "" );
 		glfwSetWindowTitle( window, title );
 
 		glfwSwapBuffers( window );
@@ -800,139 +1234,5 @@ catch( std::exception const& eErr )
 #endif
 
 	return 1;
-}
-
-
-namespace
-{
-	void glfw_callback_error_( int aErrNum, char const* aErrDesc )
-	{
-		std::fprintf( stderr, "GLFW error: %s (%d)\n", safe_cstr_(aErrDesc), aErrNum );
-	}
-
-	void glfw_callback_key_( GLFWwindow* aWindow, int aKey, int, int aAction, int )
-	{
-		if( GLFW_KEY_ESCAPE == aKey && GLFW_PRESS == aAction )
-		{
-			glfwSetWindowShouldClose( aWindow, GLFW_TRUE );
-			return;
-		}
-
-		auto* state = static_cast<State*>(glfwGetWindowUserPointer( aWindow ));
-		assert( state );
-
-		if( GLFW_KEY_ENTER == aKey && GLFW_PRESS == aAction )
-		{
-			if( state->showStartScreen )
-			{
-				state->showStartScreen = false;
-				state->gameStarted = true;
-				state->countdownActive = true;
-				state->countdownTime = kStartCountdownSeconds;
-				state->lives = std::max( 1, 3 + difficulty_extra_start_lives_( state->difficulty ) );
-				state->shieldMax = difficulty_start_shield_( state->difficulty );
-				state->shield = state->shieldMax;
-				state->shieldRegenRate = difficulty_shield_regen_rate_( state->difficulty );
-				state->shieldRegenCooldown = 1.2f;
-			}
-			state->inputMode = EInputMode::piloting;
-			glfwSetCursor( aWindow, state->crosshair );
-			return;
-		}
-
-		if( GLFW_KEY_R == aKey && GLFW_PRESS == aAction )
-		{
-			state->restartRequested = true;
-			return;
-		}
-
-		if( GLFW_KEY_W == aKey || GLFW_KEY_UP == aKey )
-		{
-			if( GLFW_PRESS == aAction )
-				state->thrustKeyHeld = true;
-			else if( GLFW_RELEASE == aAction )
-				state->thrustKeyHeld = false;
-		}
-
-		if( state->showStartScreen )
-		{
-			if( GLFW_PRESS == aAction )
-			{
-				if( GLFW_KEY_1 == aKey || GLFW_KEY_KP_1 == aKey )
-					state->difficulty = EDifficulty::easy;
-				else if( GLFW_KEY_2 == aKey || GLFW_KEY_KP_2 == aKey )
-					state->difficulty = EDifficulty::normal;
-				else if( GLFW_KEY_3 == aKey || GLFW_KEY_KP_3 == aKey )
-					state->difficulty = EDifficulty::hard;
-			}
-		}
-
-		if( EInputMode::standard == state->inputMode )
-		{
-			if( GLFW_KEY_SPACE == aKey && GLFW_PRESS == aAction )
-			{
-				state->inputMode = EInputMode::piloting;
-				glfwSetCursor( aWindow, state->crosshair );
-			}
-		}
-		else if( EInputMode::piloting == state->inputMode )
-		{
-			if( GLFW_KEY_SPACE == aKey && GLFW_PRESS == aAction )
-			{
-				state->inputMode = EInputMode::standard;
-				glfwSetCursor( aWindow, nullptr );
-			}
-		}
-	}
-
-	void glfw_callback_button_( GLFWwindow* aWindow, int aBut, int aAct, int )
-	{
-		auto* state = static_cast<State*>(glfwGetWindowUserPointer( aWindow ));
-		assert( state );
-
-		if( EInputMode::piloting == state->inputMode )
-		{
-			if( GLFW_MOUSE_BUTTON_RIGHT == aBut )
-			{
-				if( GLFW_PRESS == aAct )
-					state->thrustMouseHeld = true;
-				else if( GLFW_RELEASE == aAct )
-					state->thrustMouseHeld = false;
-			}
-			if( GLFW_MOUSE_BUTTON_LEFT == aBut && GLFW_PRESS == aAct && !state->showStartScreen && !state->countdownActive )
-			{
-				state->fireRequested = true;
-			}
-		}
-	}
-
-	void glfw_callback_motion_( GLFWwindow* aWindow, double aX, double aY )
-	{
-		auto* state = static_cast<State*>(glfwGetWindowUserPointer( aWindow ));
-		assert( state );
-
-		int iwidth, iheight;
-		glfwGetFramebufferSize( aWindow, &iwidth, &iheight );
-
-		if( EInputMode::piloting == state->inputMode )
-		{
-			Vec2f relative{ float(aX) - iwidth/2.f, iheight/2.f - float(aY) };
-			state->player.angle = std::atan2( relative.y, relative.x );
-		}
-	}
-}
-
-namespace
-{
-	GLFWCleanupHelper::~GLFWCleanupHelper()
-	{
-		glfwTerminate();
-	}
-
-	GLFWWindowDeleter::~GLFWWindowDeleter()
-	{
-		if( window )
-			glfwDestroyWindow( window );
-	}
 }
 

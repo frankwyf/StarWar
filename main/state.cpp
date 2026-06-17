@@ -20,6 +20,30 @@ void state_update( State& aState, float aDeltaSeconds )
 	if( aState.shieldRegenCooldown > 0.f )
 		aState.shieldRegenCooldown = std::max( 0.f, aState.shieldRegenCooldown - aDeltaSeconds );
 
+	if( aState.rapidFireTime > 0.f )
+		aState.rapidFireTime = std::max( 0.f, aState.rapidFireTime - aDeltaSeconds );
+
+	if( aState.comboTimer > 0.f )
+		aState.comboTimer = std::max( 0.f, aState.comboTimer - aDeltaSeconds );
+	else
+		aState.comboCount = 0;
+
+	if( aState.hitFlashTime > 0.f )
+		aState.hitFlashTime = std::max( 0.f, aState.hitFlashTime - aDeltaSeconds );
+
+	if( aState.waveBannerTime > 0.f )
+		aState.waveBannerTime = std::max( 0.f, aState.waveBannerTime - aDeltaSeconds );
+
+	if( aState.screenShakeTime > 0.f )
+	{
+		aState.screenShakeTime = std::max( 0.f, aState.screenShakeTime - aDeltaSeconds );
+		aState.screenShakeStrength = std::max( 0.f, aState.screenShakeStrength - aDeltaSeconds * 18.f );
+	}
+	else
+	{
+		aState.screenShakeStrength = 0.f;
+	}
+
 	aState.player.accelerationMagnitude = (aState.thrustKeyHeld || aState.thrustMouseHeld) ? 500.f : 0.f;
 
 	if( aState.showStartScreen || aState.gameOver )

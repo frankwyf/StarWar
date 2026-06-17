@@ -54,7 +54,7 @@ jobs:
         with:
           name: StarWar ${{ github.ref_name }}
           body: |
-            修复 EXE 无法打开的问题（补齐运行所需资源文件打包）。
+            Windows playable package for this release.
 
             Players: download `${{ env.PLAYABLE_ZIP_NAME }}`, extract it, and run `StarWar.exe`.
 
