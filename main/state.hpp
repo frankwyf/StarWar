@@ -63,6 +63,28 @@ struct State
 	float screenShakeTime = 0.f;
 	float screenShakeStrength = 0.f;
 	bool audioEnabled = true;
+
+	// Statistics & progression
+	int highScore = 0;
+	int totalKills = 0;
+	int bossesDefeated = 0;
+	float totalPlayTime = 0.f;
+	int maxWaveReached = 0;
+
+	// Engine exhaust
+	float exhaustTimer = 0.f;
+
+	// Minimap
+	bool showMinimap = true;
+
+	// FPS tracking
+	float fpsAccum = 0.f;
+	int fpsFrames = 0;
+	float displayFps = 0.f;
+
+	// Score popup
+	float slowMotionTime = 0.f;
+
 	// Frame data
 	struct Frame_
 	{

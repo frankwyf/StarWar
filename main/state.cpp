@@ -44,6 +44,26 @@ void state_update( State& aState, float aDeltaSeconds )
 		aState.screenShakeStrength = 0.f;
 	}
 
+	if( aState.slowMotionTime > 0.f )
+		aState.slowMotionTime = std::max( 0.f, aState.slowMotionTime - aDeltaSeconds );
+
+	// FPS tracking
+	aState.fpsAccum += aDeltaSeconds;
+	++aState.fpsFrames;
+	if( aState.fpsAccum >= 0.5f )
+	{
+		aState.displayFps = float(aState.fpsFrames) / aState.fpsAccum;
+		aState.fpsAccum = 0.f;
+		aState.fpsFrames = 0;
+	}
+
+	// Play time
+	if( !aState.showStartScreen && !aState.gameOver && !aState.countdownActive )
+		aState.totalPlayTime += aDeltaSeconds;
+
+	// Exhaust timer
+	aState.exhaustTimer += aDeltaSeconds;
+
 	aState.player.accelerationMagnitude = (aState.thrustKeyHeld || aState.thrustMouseHeld) ? 500.f : 0.f;
 
 	if( aState.showStartScreen || aState.gameOver )

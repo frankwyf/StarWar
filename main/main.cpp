@@ -55,6 +55,14 @@ namespace
 	constexpr float kStartCountdownSeconds = 3.f;
 	constexpr float kComboWindowSeconds = 3.5f;
 	constexpr float kRapidFireDuration = 6.0f;
+	constexpr float kExhaustInterval = 0.025f;
+	constexpr float kExhaustLife = 0.55f;
+	constexpr float kExhaustSpeed = 160.f;
+	constexpr float kScorePopupLife = 1.2f;
+	constexpr float kMinimapSize = 130.f;
+	constexpr float kMinimapMargin = 14.f;
+	constexpr float kMinimapWorldRange = 1800.f;
+	constexpr float kDangerIndicatorDist = 80.f;
 
 	enum class EnemyArchetype
 	{
@@ -190,6 +198,22 @@ namespace
 		Vec2f vel;
 		float life = 0.f;
 		float maxLife = 0.f;
+		ColorU8_sRGB color;
+	};
+
+	struct ScorePopup
+	{
+		Vec2f pos;
+		int value = 0;
+		float life = kScorePopupLife;
+		ColorU8_sRGB color;
+	};
+
+	struct ExhaustTrail
+	{
+		Vec2f pos;
+		float life = kExhaustLife;
+		float maxLife = kExhaustLife;
 		ColorU8_sRGB color;
 	};
 
@@ -372,6 +396,12 @@ namespace
 			return;
 		}
 
+		if( GLFW_KEY_TAB == aKey && GLFW_PRESS == aAction )
+		{
+			state->showMinimap = !state->showMinimap;
+			return;
+		}
+
 		if( GLFW_KEY_W == aKey || GLFW_KEY_UP == aKey )
 		{
 			if( GLFW_PRESS == aAction )
@@ -532,6 +562,10 @@ int main( int aArgc, char* aArgv[] ) try
 	pickups.reserve( 16 );
 	std::vector<FxParticle> fx;
 	fx.reserve( 256 );
+	std::vector<ScorePopup> scorePopups;
+	scorePopups.reserve( 32 );
+	std::vector<ExhaustTrail> exhaust;
+	exhaust.reserve( 128 );
 	std::uniform_real_distribution<float> unit01( 0.f, 1.f );
 
 	// Cursors
@@ -645,10 +679,16 @@ int main( int aArgc, char* aArgv[] ) try
 			auto* cursor = state.crosshair;
 			auto const selectedDifficulty = state.difficulty;
 			auto const audioEnabled = state.audioEnabled;
+			auto const bestScore = std::max( state.highScore, state.score );
+			auto const bestWave = std::max( state.maxWaveReached, state.wave );
+			auto const minimap = state.showMinimap;
 			state = State{};
 			state.crosshair = cursor;
 			state.difficulty = selectedDifficulty;
 			state.audioEnabled = audioEnabled;
+			state.highScore = bestScore;
+			state.maxWaveReached = bestWave;
+			state.showMinimap = minimap;
 			state.inputMode = EInputMode::piloting;
 			state.showStartScreen = true;
 			glfwSetCursor( window, nullptr );
@@ -656,6 +696,8 @@ int main( int aArgc, char* aArgv[] ) try
 			enemies.clear();
 			pickups.clear();
 			fx.clear();
+			scorePopups.clear();
+			exhaust.clear();
 		}
 
 		state_update( state, dt );
@@ -684,6 +726,17 @@ int main( int aArgc, char* aArgv[] ) try
 			play_audio_event_( AudioEvent::fire, state.audioEnabled );
 		}
 		state.fireRequested = false;
+
+		// Engine exhaust trail
+		if( !state.showStartScreen && !state.gameOver && state.player.accelerationMagnitude > 0.f && state.exhaustTimer >= kExhaustInterval )
+		{
+			state.exhaustTimer = 0.f;
+			Vec2f dir{ std::cos( state.player.angle ), std::sin( state.player.angle ) };
+			Vec2f exhaustPos = Vec2f{ fbwidth*0.5f, fbheight*0.5f } - dir * 22.f;
+			std::uniform_real_distribution<float> jitter( -4.f, 4.f );
+			exhaust.push_back( ExhaustTrail{ { exhaustPos.x + jitter(rng), exhaustPos.y + jitter(rng) }, kExhaustLife, kExhaustLife, ColorU8_sRGB{ 100, 160, 255 } } );
+			exhaust.push_back( ExhaustTrail{ { exhaustPos.x + jitter(rng), exhaustPos.y + jitter(rng) }, kExhaustLife * 0.7f, kExhaustLife * 0.7f, ColorU8_sRGB{ 200, 220, 255 } } );
+		}
 
 		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && enemies.empty() )
 		{
@@ -835,24 +888,29 @@ int main( int aArgc, char* aArgv[] ) try
 						consumed = true;
 						spawn_burst_fx_( fx, it->pos, ColorU8_sRGB{ 255, 140, 90 }, eit->boss ? 7 : 4, eit->boss ? 180.f : 120.f, rng );
 						if( eit->hp <= 0.f )
-						{
-							++state.comboCount;
-							state.comboTimer = kComboWindowSeconds;
-							state.score += (eit->boss ? 300 : 40) * combo_multiplier_( state.comboCount );
-							if( !eit->boss && unit01(rng) < 0.28f )
 							{
-								pickups.push_back( Pickup{
-									eit->pos,
-									Vec2f{ (unit01(rng)-0.5f) * 90.f, (unit01(rng)-0.5f) * 90.f },
-									9.f,
-									unit01(rng) < 0.55f ? PickupType::shield : PickupType::rapidfire
-								} );
+								++state.comboCount;
+								state.comboTimer = kComboWindowSeconds;
+								int const killScore = (eit->boss ? 300 : 40) * combo_multiplier_( state.comboCount );
+								state.score += killScore;
+								++state.totalKills;
+								if( eit->boss ) ++state.bossesDefeated;
+								scorePopups.push_back( ScorePopup{ eit->pos, killScore, kScorePopupLife, eit->boss ? ColorU8_sRGB{ 255, 100, 100 } : ColorU8_sRGB{ 255, 230, 100 } } );
+								if( !eit->boss && unit01(rng) < 0.28f )
+								{
+									pickups.push_back( Pickup{
+										eit->pos,
+										Vec2f{ (unit01(rng)-0.5f) * 90.f, (unit01(rng)-0.5f) * 90.f },
+										9.f,
+										unit01(rng) < 0.55f ? PickupType::shield : PickupType::rapidfire
+									} );
+								}
+								play_audio_event_( AudioEvent::enemyDown, state.audioEnabled );
+								state.screenShakeTime = std::max( state.screenShakeTime, eit->boss ? 0.35f : 0.12f );
+								state.screenShakeStrength = std::max( state.screenShakeStrength, eit->boss ? 9.f : 3.f );
+								spawn_burst_fx_( fx, eit->pos, ColorU8_sRGB{ 255, 200, 80 }, eit->boss ? 18 : 9, eit->boss ? 240.f : 160.f, rng );
+								eit = enemies.erase( eit );
 							}
-							play_audio_event_( AudioEvent::enemyDown, state.audioEnabled );
-							state.screenShakeTime = std::max( state.screenShakeTime, eit->boss ? 0.35f : 0.12f );
-							state.screenShakeStrength = std::max( state.screenShakeStrength, eit->boss ? 9.f : 3.f );
-							eit = enemies.erase( eit );
-						}
 						else
 						{
 							++eit;
@@ -951,6 +1009,35 @@ int main( int aArgc, char* aArgv[] ) try
 		if( pickups.size() > 120 )
 			pickups.erase( pickups.begin(), pickups.begin() + (pickups.size() - 120) );
 
+		// Update exhaust trails
+		for( auto eit = exhaust.begin(); eit != exhaust.end(); )
+		{
+			eit->life -= state.thisFrame.dt;
+			eit->pos -= state.thisFrame.movement;
+			if( eit->life <= 0.f )
+				eit = exhaust.erase( eit );
+			else
+				++eit;
+		}
+		if( exhaust.size() > 300 )
+			exhaust.erase( exhaust.begin(), exhaust.begin() + (exhaust.size() - 300) );
+
+		// Update score popups
+		for( auto sit = scorePopups.begin(); sit != scorePopups.end(); )
+		{
+			sit->life -= state.thisFrame.dt;
+			sit->pos.y += 40.f * state.thisFrame.dt;
+			sit->pos -= state.thisFrame.movement;
+			if( sit->life <= 0.f )
+				sit = scorePopups.erase( sit );
+			else
+				++sit;
+		}
+
+		// Update high score
+		state.highScore = std::max( state.highScore, state.score );
+		state.maxWaveReached = std::max( state.maxWaveReached, state.wave );
+
 		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && state.shieldRegenCooldown <= 0.f && state.shield < state.shieldMax )
 		{
 			state.shield = std::min( state.shieldMax, state.shield + state.shieldRegenRate * state.thisFrame.dt );
@@ -1027,6 +1114,17 @@ int main( int aArgc, char* aArgv[] ) try
 		background.draw( surface );
 		asteroids.draw( surface );
 
+		// Draw exhaust trails (behind everything)
+		for( auto const& et : exhaust )
+		{
+			float const alpha = et.life / et.maxLife;
+			float const sz = 1.5f + (1.f - alpha) * 2.f;
+			std::uint8_t const r = static_cast<std::uint8_t>( et.color.r * alpha );
+			std::uint8_t const g = static_cast<std::uint8_t>( et.color.g * alpha );
+			std::uint8_t const b = static_cast<std::uint8_t>( et.color.b * alpha );
+			draw_rectangle_solid( surface, et.pos + renderShake - Vec2f{ sz, sz }, et.pos + renderShake + Vec2f{ sz, sz }, ColorU8_sRGB{ r, g, b } );
+		}
+
 		for( auto const& e : enemies )
 		{
 			auto const er = make_rotation_2d( e.angle );
@@ -1045,24 +1143,56 @@ int main( int aArgc, char* aArgv[] ) try
 
 		for( auto const& bullet : bullets )
 		{
+			float const sz = bullet.enemy ? 2.5f : 3.f;
+			ColorU8_sRGB const bc = bullet.enemy ? ColorU8_sRGB{ 255, 90, 90 } : ColorU8_sRGB{ 255, 230, 120 };
 			draw_rectangle_solid(
 				surface,
-				bullet.pos + renderShake - Vec2f{ 2.f, 2.f },
-				bullet.pos + renderShake + Vec2f{ 2.f, 2.f },
-				bullet.enemy ? ColorU8_sRGB{ 255, 90, 90 } : ColorU8_sRGB{ 255, 230, 120 }
+				bullet.pos + renderShake - Vec2f{ sz, sz },
+				bullet.pos + renderShake + Vec2f{ sz, sz },
+				bc
+			);
+			// Bullet glow halo
+			ColorU8_sRGB const halo = bullet.enemy ? ColorU8_sRGB{ 160, 50, 50 } : ColorU8_sRGB{ 160, 140, 60 };
+			draw_rectangle_solid(
+				surface,
+				bullet.pos + renderShake - Vec2f{ sz + 1.f, sz + 1.f },
+				bullet.pos + renderShake - Vec2f{ sz, sz },
+				halo
 			);
 		}
 
 		for( auto const& p : pickups )
 		{
 			ColorU8_sRGB c = p.type == PickupType::shield ? ColorU8_sRGB{ 90, 190, 255 } : ColorU8_sRGB{ 255, 220, 110 };
-			draw_rectangle_outline( surface, p.pos + renderShake - Vec2f{ 8.f, 8.f }, p.pos + renderShake + Vec2f{ 8.f, 8.f }, c );
+			draw_rectangle_outline( surface, p.pos + renderShake - Vec2f{ 9.f, 9.f }, p.pos + renderShake + Vec2f{ 9.f, 9.f }, c );
 			draw_rectangle_solid( surface, p.pos + renderShake - Vec2f{ 5.f, 5.f }, p.pos + renderShake + Vec2f{ 5.f, 5.f }, c );
+			// Pulsing inner
+			float pulse = std::abs( std::sin( state.totalPlayTime * 6.f ) );
+			float inner = 2.f + pulse * 3.f;
+			draw_rectangle_solid( surface, p.pos + renderShake - Vec2f{ inner, inner }, p.pos + renderShake + Vec2f{ inner, inner }, ColorU8_sRGB{ 255, 255, 255 } );
 		}
 
 		for( auto const& p : fx )
 		{
-			draw_rectangle_solid( surface, p.pos + renderShake - Vec2f{ 1.f, 1.f }, p.pos + renderShake + Vec2f{ 1.f, 1.f }, p.color );
+			float const alpha = p.life / p.maxLife;
+			float const sz = alpha * 2.f;
+			std::uint8_t const r = static_cast<std::uint8_t>( p.color.r * alpha );
+			std::uint8_t const g = static_cast<std::uint8_t>( p.color.g * alpha );
+			std::uint8_t const b = static_cast<std::uint8_t>( p.color.b * alpha );
+			draw_rectangle_solid( surface, p.pos + renderShake - Vec2f{ sz, sz }, p.pos + renderShake + Vec2f{ sz, sz }, ColorU8_sRGB{ r, g, b } );
+		}
+
+		// Score popups
+		for( auto const& sp : scorePopups )
+		{
+			float const alpha = sp.life / kScorePopupLife;
+			int scale = sp.value >= 200 ? 2 : 1;
+			std::uint8_t const r = static_cast<std::uint8_t>( sp.color.r * alpha );
+			std::uint8_t const g = static_cast<std::uint8_t>( sp.color.g * alpha );
+			std::uint8_t const b = static_cast<std::uint8_t>( sp.color.b * alpha );
+			char popText[32] = {};
+			std::snprintf( popText, sizeof(popText), "%d", sp.value );
+			draw_text_5x7_( surface, sp.pos + renderShake, scale, ColorU8_sRGB{ r, g, b }, popText );
 		}
 
 		auto const rot = make_rotation_2d( state.player.angle );
@@ -1072,26 +1202,65 @@ int main( int aArgc, char* aArgv[] ) try
 			: ColorF{ 0.2f, 0.4f, 0.7f };
 		spaceship.draw( surface, shipColor, rot, offs );
 
-		float const scoreBar = std::min( 1.f, state.score / 1200.f );
-		draw_rectangle_outline( surface, { 20.f, 20.f }, { 220.f, 36.f }, ColorU8_sRGB{ 180, 180, 180 } );
-		draw_rectangle_solid( surface, { 22.f, 22.f }, { 22.f + 196.f * scoreBar, 34.f }, ColorU8_sRGB{ 90, 200, 120 } );
+		// Shield glow ring around player when active
+		if( state.shield > 0.f && !state.showStartScreen && !state.gameOver )
+		{
+			float shieldAlpha = std::clamp( state.shield / state.shieldMax, 0.1f, 1.f );
+			std::uint8_t const sv = static_cast<std::uint8_t>( 80.f * shieldAlpha );
+			float const shRad = 26.f + shieldAlpha * 4.f;
+			draw_rectangle_outline( surface, offs - Vec2f{ shRad, shRad }, offs + Vec2f{ shRad, shRad }, ColorU8_sRGB{ sv, static_cast<std::uint8_t>(sv + 60), 255 } );
+		}
+
+		float const scoreBar = std::min( 1.f, state.score / 2000.f );
+		draw_rectangle_solid( surface, { 18.f, 18.f }, { 222.f, 38.f }, ColorU8_sRGB{ 10, 14, 26 } );
+		draw_rectangle_outline( surface, { 18.f, 18.f }, { 222.f, 38.f }, ColorU8_sRGB{ 180, 180, 180 } );
+		draw_rectangle_solid( surface, { 20.f, 20.f }, { 20.f + 200.f * scoreBar, 36.f }, ColorU8_sRGB{ 90, 200, 120 } );
+		{
+			char scoreStr[64] = {};
+			std::snprintf( scoreStr, sizeof(scoreStr), "%d", state.score );
+			draw_text_5x7_( surface, { 226.f, 22.f }, 2, ColorU8_sRGB{ 200, 255, 180 }, scoreStr );
+		}
 
 		float const shieldRatio = state.shieldMax > 0.f ? std::clamp( state.shield / state.shieldMax, 0.f, 1.f ) : 0.f;
-		draw_rectangle_outline( surface, { 20.f, 42.f }, { 220.f, 58.f }, ColorU8_sRGB{ 120, 170, 255 } );
-		draw_rectangle_solid( surface, { 22.f, 44.f }, { 22.f + 196.f * shieldRatio, 56.f }, ColorU8_sRGB{ 70, 140, 240 } );
+		draw_rectangle_solid( surface, { 18.f, 42.f }, { 222.f, 60.f }, ColorU8_sRGB{ 10, 14, 26 } );
+		draw_rectangle_outline( surface, { 18.f, 42.f }, { 222.f, 60.f }, ColorU8_sRGB{ 120, 170, 255 } );
+		draw_rectangle_solid( surface, { 20.f, 44.f }, { 20.f + 200.f * shieldRatio, 58.f }, ColorU8_sRGB{ 70, 140, 240 } );
 		draw_text_5x7_( surface, { 226.f, 45.f }, 1, ColorU8_sRGB{ 160, 200, 255 }, "SHIELD" );
+
+		// High score display
+		if( state.highScore > 0 )
+		{
+			char hiText[64] = {};
+			std::snprintf( hiText, sizeof(hiText), "HI %d", state.highScore );
+			draw_text_5x7_( surface, { 20.f, float(fbheight) - 20.f }, 1, ColorU8_sRGB{ 180, 180, 100 }, hiText );
+		}
+
+		// FPS display
+		{
+			char fpsText[32] = {};
+			std::snprintf( fpsText, sizeof(fpsText), "%.0f FPS", state.displayFps );
+			draw_text_5x7_( surface, { float(fbwidth) - 80.f, float(fbheight) - 20.f }, 1, ColorU8_sRGB{ 120, 120, 120 }, fpsText );
+		}
 
 		if( state.comboCount > 1 && state.comboTimer > 0.f )
 		{
 			char comboText[64] = {};
 			std::snprintf( comboText, sizeof(comboText), "COMBO x%d", combo_multiplier_( state.comboCount ) );
-			draw_text_5x7_( surface, { 20.f, 64.f }, 2, ColorU8_sRGB{ 255, 210, 110 }, comboText );
+			draw_text_5x7_( surface, { 20.f, 66.f }, 2, ColorU8_sRGB{ 255, 210, 110 }, comboText );
 		}
 		if( state.rapidFireTime > 0.f )
 		{
 			char rapidText[64] = {};
 			std::snprintf( rapidText, sizeof(rapidText), "RAPID FIRE %.1fs", state.rapidFireTime );
-			draw_text_5x7_( surface, { 20.f, 86.f }, 2, ColorU8_sRGB{ 255, 240, 140 }, rapidText );
+			draw_text_5x7_( surface, { 20.f, 88.f }, 2, ColorU8_sRGB{ 255, 240, 140 }, rapidText );
+		}
+
+		// Wave and kills info
+		if( !state.showStartScreen && !state.countdownActive )
+		{
+			char infoText[96] = {};
+			std::snprintf( infoText, sizeof(infoText), "WAVE %d  KILLS %d", state.wave, state.totalKills );
+			draw_text_5x7_( surface, { 20.f, float(fbheight) - 36.f }, 1, ColorU8_sRGB{ 160, 170, 200 }, infoText );
 		}
 
 		if( state.lives > 0 )
@@ -1099,7 +1268,69 @@ int main( int aArgc, char* aArgv[] ) try
 			for( int i = 0; i < state.lives; ++i )
 			{
 				float x0 = float(fbwidth) - 22.f - i * 22.f;
-				draw_rectangle_solid( surface, { x0 - 14.f, 20.f }, { x0, 34.f }, ColorU8_sRGB{ 220, 80, 80 } );
+				draw_rectangle_solid( surface, { x0 - 14.f, 20.f }, { x0, 36.f }, ColorU8_sRGB{ 220, 80, 80 } );
+				draw_rectangle_outline( surface, { x0 - 14.f, 20.f }, { x0, 36.f }, ColorU8_sRGB{ 255, 140, 140 } );
+			}
+		}
+
+		// Minimap
+		if( state.showMinimap && !state.showStartScreen && !state.gameOver )
+		{
+			float const mmX = float(fbwidth) - kMinimapSize - kMinimapMargin;
+			float const mmY = float(fbheight) - kMinimapSize - kMinimapMargin;
+			draw_rectangle_solid( surface, { mmX, mmY }, { mmX + kMinimapSize, mmY + kMinimapSize }, ColorU8_sRGB{ 8, 12, 22 } );
+			draw_rectangle_outline( surface, { mmX, mmY }, { mmX + kMinimapSize, mmY + kMinimapSize }, ColorU8_sRGB{ 60, 80, 120 } );
+
+			Vec2f const mmCenter{ mmX + kMinimapSize * 0.5f, mmY + kMinimapSize * 0.5f };
+			Vec2f const playerScreen{ fbwidth * 0.5f, fbheight * 0.5f };
+
+			// Player blip (center)
+			draw_rectangle_solid( surface, mmCenter - Vec2f{ 2.f, 2.f }, mmCenter + Vec2f{ 2.f, 2.f }, ColorU8_sRGB{ 100, 180, 255 } );
+
+			// Enemy blips
+			for( auto const& e : enemies )
+			{
+				Vec2f rel = (e.pos - playerScreen) * (kMinimapSize * 0.45f / kMinimapWorldRange);
+				Vec2f mmPos = mmCenter + Vec2f{ rel.x, -rel.y };
+				if( mmPos.x > mmX + 3.f && mmPos.x < mmX + kMinimapSize - 3.f && mmPos.y > mmY + 3.f && mmPos.y < mmY + kMinimapSize - 3.f )
+				{
+					ColorU8_sRGB ec = e.boss ? ColorU8_sRGB{ 255, 60, 60 } : ColorU8_sRGB{ 255, 160, 60 };
+					float esz = e.boss ? 3.f : 1.5f;
+					draw_rectangle_solid( surface, mmPos - Vec2f{ esz, esz }, mmPos + Vec2f{ esz, esz }, ec );
+				}
+			}
+
+			// Pickup blips
+			for( auto const& p : pickups )
+			{
+				Vec2f rel = (p.pos - playerScreen) * (kMinimapSize * 0.45f / kMinimapWorldRange);
+				Vec2f mmPos = mmCenter + Vec2f{ rel.x, -rel.y };
+				if( mmPos.x > mmX + 3.f && mmPos.x < mmX + kMinimapSize - 3.f && mmPos.y > mmY + 3.f && mmPos.y < mmY + kMinimapSize - 3.f )
+				{
+					draw_rectangle_solid( surface, mmPos - Vec2f{ 1.f, 1.f }, mmPos + Vec2f{ 1.f, 1.f }, ColorU8_sRGB{ 90, 230, 160 } );
+				}
+			}
+		}
+
+		// Edge danger indicators for off-screen enemies
+		if( !state.showStartScreen && !state.gameOver && !state.countdownActive )
+		{
+			Vec2f const playerScreen{ fbwidth * 0.5f, fbheight * 0.5f };
+			for( auto const& e : enemies )
+			{
+				bool offscreen = e.pos.x < -10.f || e.pos.x > float(fbwidth) + 10.f || e.pos.y < -10.f || e.pos.y > float(fbheight) + 10.f;
+				if( offscreen )
+				{
+					Vec2f dir = e.pos - playerScreen;
+					float dist = length( dir );
+					if( dist > 1.f ) dir = dir / dist;
+					Vec2f indicator = playerScreen + dir * kDangerIndicatorDist;
+					indicator.x = std::clamp( indicator.x, 12.f, float(fbwidth) - 12.f );
+					indicator.y = std::clamp( indicator.y, 12.f, float(fbheight) - 12.f );
+					ColorU8_sRGB dc = e.boss ? ColorU8_sRGB{ 255, 50, 50 } : ColorU8_sRGB{ 255, 160, 60 };
+					draw_rectangle_solid( surface, indicator - Vec2f{ 4.f, 4.f }, indicator + Vec2f{ 4.f, 4.f }, dc );
+					draw_rectangle_outline( surface, indicator - Vec2f{ 6.f, 6.f }, indicator + Vec2f{ 6.f, 6.f }, dc );
+				}
 			}
 		}
 
@@ -1129,6 +1360,7 @@ int main( int aArgc, char* aArgv[] ) try
 			draw_text_5x7_( surface, { leftX, topY + 124.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "RIGHT MOUSE: THRUST" );
 			draw_text_5x7_( surface, { leftX, topY + 148.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "SPACE: TOGGLE PILOT MODE" );
 			draw_text_5x7_( surface, { leftX, topY + 172.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "R: RESTART  M: AUDIO  ESC: QUIT" );
+			draw_text_5x7_( surface, { leftX, topY + 196.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "TAB: TOGGLE MINIMAP" );
 
 			draw_text_5x7_( surface, { rightX, topY }, 2, ColorU8_sRGB{ 170, 210, 255 }, "GAMEPLAY LOOP" );
 			draw_text_5x7_( surface, { rightX, topY + 28.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "1. SURVIVE ASTEROIDS AND ENEMY FIRE" );
@@ -1138,6 +1370,12 @@ int main( int aArgc, char* aArgv[] ) try
 			draw_text_5x7_( surface, { rightX, topY + 124.f }, 2, ColorU8_sRGB{ 250, 210, 90 }, "DIFFICULTY: 1 EASY  2 NORMAL  3 HARD" );
 			draw_text_5x7_( surface, { rightX, topY + 148.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "COUNTDOWN START + SHIELD BAR ENABLED" );
 			draw_text_5x7_( surface, { rightX, topY + 172.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "CLEARING WAVES RESTORES SHIELD" );
+			if( state.highScore > 0 )
+			{
+				char hiScoreText[64] = {};
+				std::snprintf( hiScoreText, sizeof(hiScoreText), "BEST SCORE: %d  BEST WAVE: %d", state.highScore, state.maxWaveReached );
+				draw_text_5x7_( surface, { rightX, topY + 196.f }, 2, ColorU8_sRGB{ 255, 220, 100 }, hiScoreText );
+			}
 
 			draw_rectangle_solid( surface, { pmin.x + 22.f, pmax.y - 56.f }, { pmax.x - 22.f, pmax.y - 24.f }, ColorU8_sRGB{ 36, 60, 120 } );
 			draw_rectangle_outline( surface, { pmin.x + 22.f, pmax.y - 56.f }, { pmax.x - 22.f, pmax.y - 24.f }, ColorU8_sRGB{ 170, 210, 255 } );
@@ -1170,18 +1408,32 @@ int main( int aArgc, char* aArgv[] ) try
 		{
 			draw_rectangle_solid(
 				surface,
-				{ fbwidth * 0.5f - 170.f, fbheight * 0.5f - 35.f },
-				{ fbwidth * 0.5f + 170.f, fbheight * 0.5f + 35.f },
+				{ fbwidth * 0.5f - 190.f, fbheight * 0.5f - 70.f },
+				{ fbwidth * 0.5f + 190.f, fbheight * 0.5f + 70.f },
 				ColorU8_sRGB{ 120, 20, 20 }
 			);
 			draw_rectangle_outline(
 				surface,
-				{ fbwidth * 0.5f - 170.f, fbheight * 0.5f - 35.f },
-				{ fbwidth * 0.5f + 170.f, fbheight * 0.5f + 35.f },
+				{ fbwidth * 0.5f - 190.f, fbheight * 0.5f - 70.f },
+				{ fbwidth * 0.5f + 190.f, fbheight * 0.5f + 70.f },
 				ColorU8_sRGB{ 255, 120, 120 }
 			);
-			draw_text_5x7_( surface, { fbwidth * 0.5f - 110.f, fbheight * 0.5f - 24.f }, 4, ColorU8_sRGB{ 255, 230, 230 }, "GAME OVER" );
-			draw_text_5x7_( surface, { fbwidth * 0.5f - 116.f, fbheight * 0.5f + 10.f }, 2, ColorU8_sRGB{ 255, 180, 180 }, "PRESS R TO RESTART" );
+			draw_text_5x7_( surface, { fbwidth * 0.5f - 110.f, fbheight * 0.5f - 56.f }, 4, ColorU8_sRGB{ 255, 230, 230 }, "GAME OVER" );
+
+			char finalScore[96] = {};
+			std::snprintf( finalScore, sizeof(finalScore), "SCORE: %d  WAVE: %d  KILLS: %d", state.score, state.wave, state.totalKills );
+			draw_text_5x7_( surface, { fbwidth * 0.5f - 170.f, fbheight * 0.5f - 10.f }, 2, ColorU8_sRGB{ 255, 200, 160 }, finalScore );
+
+			char timeText[64] = {};
+			int minutes = int(state.totalPlayTime) / 60;
+			int seconds = int(state.totalPlayTime) % 60;
+			std::snprintf( timeText, sizeof(timeText), "TIME: %d:%02d  BOSSES: %d", minutes, seconds, state.bossesDefeated );
+			draw_text_5x7_( surface, { fbwidth * 0.5f - 148.f, fbheight * 0.5f + 16.f }, 2, ColorU8_sRGB{ 255, 200, 160 }, timeText );
+
+			if( state.score >= state.highScore )
+				draw_text_5x7_( surface, { fbwidth * 0.5f - 82.f, fbheight * 0.5f + 40.f }, 2, ColorU8_sRGB{ 255, 240, 100 }, "NEW HIGH SCORE" );
+
+			draw_text_5x7_( surface, { fbwidth * 0.5f - 116.f, fbheight * 0.5f + 58.f }, 2, ColorU8_sRGB{ 255, 180, 180 }, "PRESS R TO RESTART" );
 		}
 
 		if( state.waveBannerTime > 0.f && !state.showStartScreen && !state.gameOver )
@@ -1202,15 +1454,25 @@ int main( int aArgc, char* aArgv[] ) try
 			draw_rectangle_solid( surface, { 0.f, 0.f }, { float(fbwidth), float(fbheight) }, ColorU8_sRGB{ alphaTint, 28, 28 } );
 		}
 
+		// Subtle screen edge vignette
+		if( !state.showStartScreen )
+		{
+			float const vigW = 6.f;
+			draw_rectangle_solid( surface, { 0.f, 0.f }, { vigW, float(fbheight) }, ColorU8_sRGB{ 4, 4, 8 } );
+			draw_rectangle_solid( surface, { float(fbwidth) - vigW, 0.f }, { float(fbwidth), float(fbheight) }, ColorU8_sRGB{ 4, 4, 8 } );
+			draw_rectangle_solid( surface, { 0.f, 0.f }, { float(fbwidth), vigW }, ColorU8_sRGB{ 4, 4, 8 } );
+			draw_rectangle_solid( surface, { 0.f, float(fbheight) - vigW }, { float(fbwidth), float(fbheight) }, ColorU8_sRGB{ 4, 4, 8 } );
+		}
+
 		context.draw( surface );
 
 		char title[320] = {};
 		if( state.showStartScreen )
-			std::snprintf( title, sizeof(title), "%s | Difficulty: %s (1/2/3) | Start: ENTER | Toggle pilot: SPACE | Aim: Mouse | Thrust: W/UP or Right Mouse | Fire: Left Mouse | Audio: %s (M)", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.audioEnabled ? "On" : "Off" );
+			std::snprintf( title, sizeof(title), "%s | Difficulty: %s (1/2/3) | Start: ENTER | HI: %d", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.highScore );
 		else if( state.countdownActive )
-			std::snprintf( title, sizeof(title), "%s | Difficulty: %s | Launch in %.1fs | Audio: %s", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.countdownTime, state.audioEnabled ? "On" : "Off" );
+			std::snprintf( title, sizeof(title), "%s | %s | Launch in %.1fs", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.countdownTime );
 		else
-			std::snprintf( title, sizeof(title), "%s | Score: %d | Lives: %d | Wave: %d | Weapon: Lv%d | Combo x%d | Rapid %.1fs | Difficulty: %s | Audio: %s%s", kWindowTitle, state.score, state.lives, state.wave, state.weaponLevel, combo_multiplier_(state.comboCount), state.rapidFireTime, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.audioEnabled ? "On" : "Off", state.gameOver ? " | GAME OVER (R to restart)" : "" );
+			std::snprintf( title, sizeof(title), "%s | Score: %d | Wave: %d | Kills: %d | %.0f FPS%s", kWindowTitle, state.score, state.wave, state.totalKills, state.displayFps, state.gameOver ? " | GAME OVER (R)" : "" );
 		glfwSetWindowTitle( window, title );
 
 		glfwSwapBuffers( window );
