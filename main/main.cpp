@@ -719,7 +719,16 @@ int main( int aArgc, char* aArgv[] ) try
 				bullets.push_back( Bullet{ muzzle, (lrot * dir) * (kBulletSpeed * 0.9f), kBulletLife, false } );
 				bullets.push_back( Bullet{ muzzle, (rrot * dir) * (kBulletSpeed * 0.9f), kBulletLife, false } );
 			}
-			state.fireCooldown = state.weaponLevel >= 3 ? 0.09f : 0.18f;
+			if( state.weaponLevel >= 4 )
+			{
+				// Level 4: extra wide-angle shots + rear shot
+				Mat22f wl = make_rotation_2d( 0.32f );
+				Mat22f wr = make_rotation_2d( -0.32f );
+				bullets.push_back( Bullet{ muzzle, (wl * dir) * (kBulletSpeed * 0.75f), kBulletLife * 0.8f, false } );
+				bullets.push_back( Bullet{ muzzle, (wr * dir) * (kBulletSpeed * 0.75f), kBulletLife * 0.8f, false } );
+				bullets.push_back( Bullet{ muzzle - dir * 30.f, (-dir) * (kBulletSpeed * 0.5f), kBulletLife * 0.6f, false } );
+			}
+			state.fireCooldown = state.weaponLevel >= 4 ? 0.07f : (state.weaponLevel >= 3 ? 0.09f : 0.18f);
 			if( state.rapidFireTime > 0.f )
 				state.fireCooldown *= 0.45f;
 			spawn_burst_fx_( fx, muzzle, ColorU8_sRGB{ 255, 220, 120 }, 3, 120.f, rng );
@@ -742,13 +751,14 @@ int main( int aArgc, char* aArgv[] ) try
 		{
 			auto const enemySpeedScale = difficulty_enemy_speed_scale_( state.difficulty );
 			auto const enemyFireScale = difficulty_enemy_fire_scale_( state.difficulty );
+			float const waveScale = 1.f + state.wave * 0.04f; // progressive difficulty per wave
 			if( state.wave % 4 == 0 )
 			{
 				Enemy boss;
 				boss.boss = true;
-				boss.hp = 14.f + state.wave;
+				boss.hp = 14.f + state.wave * 1.5f;
 				boss.pos = { fbwidth + 160.f, fbheight * 0.5f };
-				boss.vel = { -90.f * enemySpeedScale, 0.f };
+				boss.vel = { -90.f * enemySpeedScale * waveScale, 0.f };
 				boss.fireCooldown = 1.0f * enemyFireScale;
 				enemies.push_back( boss );
 				state.bossSpawned = true;
@@ -760,6 +770,7 @@ int main( int aArgc, char* aArgv[] ) try
 			else
 			{
 				int count = std::max( 1, 2 + state.wave + difficulty_wave_enemy_bonus_( state.difficulty ) );
+				count = std::min( count, 12 ); // cap enemies per wave
 				std::uniform_real_distribution<float> sideY( 100.f, std::max( 120.f, float(fbheight) - 100.f ) );
 				for( int i = 0; i < count; ++i )
 				{
@@ -767,12 +778,12 @@ int main( int aArgc, char* aArgv[] ) try
 					e.pos = { (i % 2 == 0 ? -40.f : fbwidth + 40.f), sideY(rng) };
 					e.vel = { ((i % 2 == 0 ? 100.f : -100.f) * (1.f + 0.06f * state.wave)) * enemySpeedScale, ((unit01(rng) - 0.5f) * 30.f) * enemySpeedScale };
 					e.fireCooldown = (0.5f + unit01(rng)) * enemyFireScale;
-					e.hp = 1.f;
+					e.hp = 1.f + state.wave * 0.08f; // enemies get tougher
 					float const roll = unit01( rng );
 					if( roll < 0.22f )
 					{
 						e.archetype = EnemyArchetype::rusher;
-						e.hp = 1.2f;
+						e.hp *= 1.2f;
 					}
 					else if( roll < 0.52f )
 					{
@@ -789,6 +800,7 @@ int main( int aArgc, char* aArgv[] ) try
 			++state.wave;
 			if( state.wave >= 2 ) state.weaponLevel = 2;
 			if( state.wave >= 4 ) state.weaponLevel = 3;
+			if( state.wave >= 7 ) state.weaponLevel = 4;
 			state.shield = std::min( state.shieldMax, state.shield + 22.f );
 			state.waveBannerTime = 2.0f;
 			state.screenShakeTime = std::max( state.screenShakeTime, 0.08f );
@@ -965,6 +977,21 @@ int main( int aArgc, char* aArgv[] ) try
 			pit->pos += pit->vel * state.thisFrame.dt - state.thisFrame.movement;
 			pit->vel *= 0.98f;
 
+			// Pickup magnet: attract toward player when within range
+			if( !state.showStartScreen && !state.gameOver && !state.countdownActive )
+			{
+				Vec2f const playerScreen{ fbwidth * 0.5f, fbheight * 0.5f };
+				Vec2f const toPlayer = playerScreen - pit->pos;
+				float const distSq = dot( toPlayer, toPlayer );
+				float const magnetRange = 120.f;
+				if( distSq < magnetRange * magnetRange && distSq > 1.f )
+				{
+					float const dist = std::sqrt( distSq );
+					float const magnetForce = 280.f * (1.f - dist / magnetRange);
+					pit->vel += (toPlayer / dist) * (magnetForce * state.thisFrame.dt);
+				}
+			}
+
 			bool consumed = false;
 			if( !state.showStartScreen && !state.gameOver && !state.countdownActive )
 			{
@@ -1089,17 +1116,6 @@ int main( int aArgc, char* aArgv[] ) try
 					break;
 				}
 			}
-		}
-
-		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && enemies.empty() )
-		{
-			++state.wave;
-			if( state.wave >= 2 ) state.weaponLevel = 2;
-			if( state.wave >= 4 ) state.weaponLevel = 3;
-			state.shield = std::min( state.shieldMax, state.shield + 22.f );
-			state.waveBannerTime = 2.0f;
-			state.screenShakeTime = std::max( state.screenShakeTime, 0.08f );
-			state.screenShakeStrength = std::max( state.screenShakeStrength, 1.8f );
 		}
 
 		Vec2f renderShake{ 0.f, 0.f };
