@@ -62,7 +62,7 @@ std::unique_ptr<ImageRGBA> load_image( char const* aPath )
 
 	stbi_set_flip_vertically_on_load( true );
 
-	int w, h, channels;
+ int w = 0, h = 0, channels = 0;
 	stbi_uc* ptr = nullptr;
 
 	auto const candidates = make_image_candidates_( std::filesystem::path{ aPath } );
@@ -113,20 +113,30 @@ std::unique_ptr<ImageRGBA> load_image( char const* aPath )
 
 void blit_masked(Surface& aSurface, ImageRGBA const& aImage, Vec2f aPosition)
 {
-	//TODO: your implementation goes here
+   int const startX = static_cast<int>( std::floor( aPosition.x ) );
+	int const startY = static_cast<int>( std::floor( aPosition.y ) );
+	int const imgW = static_cast<int>( aImage.get_width() );
+	int const imgH = static_cast<int>( aImage.get_height() );
+	int const surfW = static_cast<int>( aSurface.get_width() );
+	int const surfH = static_cast<int>( aSurface.get_height() );
 
-	//loop through the image
-	for (int i = aPosition.x; i < aPosition.x + aImage.get_width(); i++) {
-		for (int j = aPosition.y; j < aImage.get_height() + aPosition.y; j++) {
+	for( int ix = 0; ix < imgW; ++ix )
+	{
+		int const sx = startX + ix;
+		if( sx < 0 || sx >= surfW )
+			continue;
 
-			// check if the alpha value is greater than 128 and within the surface
-			if (i >= 0 && i < static_cast<int> (aSurface.get_width()) && j >= 0 && j < static_cast<int> (aSurface.get_height())
-				&& aImage.get_pixel(i - aPosition.x, j - aPosition.y).a >= 128) {
+		for( int iy = 0; iy < imgH; ++iy )
+		{
+			int const sy = startY + iy;
+			if( sy < 0 || sy >= surfH )
+				continue;
 
-				// copy the pixel from the image to the surface by calling set_pixel_srgb
-				aSurface.set_pixel_srgb(i, j, { aImage.get_pixel(i - aPosition.x, j - aPosition.y).r, 
-				aImage.get_pixel(i - aPosition.x, j - aPosition.y).g, aImage.get_pixel(i - aPosition.x, j - aPosition.y).b });
-			}
+			auto const px = aImage.get_pixel( ImageRGBA::Index(ix), ImageRGBA::Index(iy) );
+			if( px.a < 128 )
+				continue;
+
+			aSurface.set_pixel_srgb( Surface::Index(sx), Surface::Index(sy), { px.r, px.g, px.b } );
 		}
 	}
 }
