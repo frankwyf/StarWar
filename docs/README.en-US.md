@@ -36,8 +36,11 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 - **W** or **Up Arrow**: Thrust
 - **Right Mouse**: Thrust (alternative)
 - **Space**: Toggle pilot mode
+- **P**: Pause / resume
+- **F12**: Save current frame to `artifacts/`
 - **R**: Restart run
 - **M**: Toggle audio on/off
+- **Tab**: Toggle minimap
 - **Esc**: Quit
 
 ### Combat and Progression
@@ -50,6 +53,12 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
   - **Lv1**: Single shot
   - **Lv2**: Tri-shot spread
   - **Lv3**: Faster fire + stronger damage
+  - **Lv4**: Wide-angle burst + rear defensive shot
+
+### Automation / QA Commands
+
+- `--selftest_assets`: checks runtime asset loading and exits.
+- `--smoketest=<seconds>`: timed gameplay smoke run with final frame capture.
 
 ### Survival Tips
 

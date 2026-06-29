@@ -44,8 +44,11 @@ A small open-source 2D space shooter built with modern C++17, OpenGL, and GLFW.
 | Fire | Left mouse |
 | Thrust | `W` / `Up Arrow` / Right mouse |
 | Toggle pilot mode | `Space` |
+| Pause / Resume | `P` |
+| Save current frame | `F12` |
 | Restart run | `R` |
 | Toggle audio | `M` |
+| Toggle minimap | `Tab` |
 | Quit | `Esc` |
 
 ## Build from Source (Developers)
@@ -60,6 +63,11 @@ A small open-source 2D space shooter built with modern C++17, OpenGL, and GLFW.
 - Workflow: `.github/workflows/release-windows.yml`
 - Every push builds a downloadable artifact (`StarWar-Windows-Playable`)
 - Tags like `v1.0.0` publish a release zip asset automatically
+
+## Automation Modes (CLI)
+
+- `--selftest_assets`: validate that required images (for example `assets/earth.png`) can be loaded, then exit.
+- `--smoketest=<seconds>`: run a timed smoke session, save the last frame to `artifacts/smoketest-last-frame.ppm`, then exit.
 
 ## Project Structure
 

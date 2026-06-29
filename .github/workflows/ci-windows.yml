@@ -40,3 +40,13 @@ jobs:
 
       - name: Build main (Release x64)
         run: msbuild main\main.vcxproj /m /p:Configuration=release /p:Platform=x64
+
+      - name: Run main asset self-test
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path bin -Filter 'main-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) { throw 'Main executable not found in bin/' }
+          & $exe.FullName --selftest_assets
+
+      - name: Build main (Debug x64)
+        run: msbuild main\main.vcxproj /m /p:Configuration=debug /p:Platform=x64
