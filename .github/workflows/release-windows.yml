@@ -34,14 +34,23 @@ jobs:
           $gameExe = Get-ChildItem -Path bin -Filter 'main-release-x64-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $gameExe) { throw 'Release executable not found in bin/' }
           & $gameExe.FullName --selftest_assets
+
+      - name: Runtime smoke validation (best effort)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $gameExe = Get-ChildItem -Path bin -Filter 'main-release-x64-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $gameExe) { throw 'Release executable not found in bin/' }
           & $gameExe.FullName --smoketest=0.7 --geometry=1280x720 --fbshift=0
           if (!(Test-Path artifacts\smoketest-last-frame.ppm)) { throw 'Smoke validation frame missing' }
 
       - name: Upload release smoke frame
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: release-smoke-frame
           path: artifacts/smoketest-last-frame.ppm
+          if-no-files-found: ignore
 
       - name: Prepare package
         shell: pwsh

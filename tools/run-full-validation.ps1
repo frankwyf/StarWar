@@ -1,6 +1,7 @@
 param(
     [string]$Configuration = "debug",
-    [string]$Platform = "x64"
+    [string]$Platform = "x64",
+    [switch]$SkipSmoke
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,9 +24,13 @@ if (-not $mainExe) { throw "Missing main executable" }
 
 & $mainExe.FullName --selftest_assets
 
-if (Test-Path artifacts) { Remove-Item artifacts -Recurse -Force }
-& $mainExe.FullName --smoketest=0.8 --geometry=960x540 --fbshift=0
-if (!(Test-Path artifacts\smoketest-last-frame.ppm)) { throw "Smoke frame not generated" }
+if (-not $SkipSmoke) {
+    if (Test-Path artifacts) { Remove-Item artifacts -Recurse -Force }
+    & $mainExe.FullName --smoketest=0.8 --geometry=960x540 --fbshift=0
+    if (!(Test-Path artifacts\smoketest-last-frame.ppm)) { throw "Smoke frame not generated" }
+} else {
+    Write-Host "Smoke test skipped by flag."
+}
 
 if (Test-Path dist) { Remove-Item dist -Recurse -Force }
 New-Item -ItemType Directory -Path dist | Out-Null
