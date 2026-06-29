@@ -734,8 +734,11 @@ int main( int aArgc, char* aArgv[] ) try
 
 	glViewport( 0, 0, iwidth, iheight );
 
-	// Resources
-	RNG rng( std::random_device{}() );
+    // Resources
+	unsigned const runtimeSeed = config.fixedSeedEnabled
+		? config.fixedSeed
+		: unsigned(std::random_device{}());
+	RNG rng( runtimeSeed );
 
 	Background background( rng, fbwidth, fbheight );
 	AsteroidField asteroids( rng, fbwidth, fbheight );
@@ -1732,8 +1735,8 @@ int main( int aArgc, char* aArgv[] ) try
 			std::snprintf( title, sizeof(title), "%s | %s | Launch in %.1fs", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.countdownTime );
         else if( state.paused )
 			std::snprintf( title, sizeof(title), "%s | PAUSED | Score: %d | Wave: %d | F12 Save Frame", kWindowTitle, state.score, state.wave );
-		else
-			std::snprintf( title, sizeof(title), "%s | Score: %d | Wave: %d | Kills: %d | %.0f FPS%s", kWindowTitle, state.score, state.wave, state.totalKills, state.displayFps, state.gameOver ? " | GAME OVER (R)" : "" );
+        else
+			std::snprintf( title, sizeof(title), "%s | Score: %d | Wave: %d | Kills: %d | Elite: %d | %.0f FPS%s", kWindowTitle, state.score, state.wave, state.totalKills, state.eliteKills, state.displayFps, state.gameOver ? " | GAME OVER (R)" : "" );
 		glfwSetWindowTitle( window, title );
 
 		glfwSwapBuffers( window );

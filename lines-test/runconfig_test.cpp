@@ -31,9 +31,11 @@ TEST_CASE( "Runconfig parses geometry/fbshift", "[runconfig]" )
 
 TEST_CASE( "Runconfig parses automation flags", "[runconfig]" )
 {
-    auto cfg = parse_( { "StarWar.exe", "--selftest_assets", "--smoketest=0.75" } );
+    auto cfg = parse_( { "StarWar.exe", "--selftest_assets", "--smoketest=0.75", "--seed=42" } );
     REQUIRE( cfg.selfTestAssets == true );
     REQUIRE( cfg.smokeTestSeconds == Catch::Approx(0.75f) );
+   REQUIRE( cfg.fixedSeedEnabled == true );
+    REQUIRE( cfg.fixedSeed == 42u );
 }
 
 TEST_CASE( "Runconfig rejects invalid values", "[runconfig]" )
@@ -43,5 +45,6 @@ TEST_CASE( "Runconfig rejects invalid values", "[runconfig]" )
     REQUIRE_THROWS_AS( parse_( { "StarWar.exe", "--smoketest=abc" } ), Error );
    REQUIRE_THROWS_AS( parse_( { "StarWar.exe", "--smoketest=-1" } ), Error );
     REQUIRE_THROWS_AS( parse_( { "StarWar.exe", "--smoketest=999" } ), Error );
+   REQUIRE_THROWS_AS( parse_( { "StarWar.exe", "--seed=abc" } ), Error );
     REQUIRE_THROWS_AS( parse_( { "StarWar.exe", "--unknown" } ), Error );
 }

@@ -15,6 +15,8 @@ struct RuntimeConfig
 	unsigned framebufferScaleShift = 0;
   bool selfTestAssets = false;
 	float smokeTestSeconds = 0.f;
+  bool fixedSeedEnabled = false;
+	unsigned fixedSeed = 0;
 };
 
 RuntimeConfig parse_command_line( int aArgc, char const* const* aArgv );

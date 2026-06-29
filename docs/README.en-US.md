@@ -61,6 +61,7 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 
 - `--selftest_assets`: checks runtime asset loading and exits.
 - `--smoketest=<seconds>`: timed gameplay smoke run with final frame capture.
+- `--seed=<unsigned>`: deterministic RNG seed for reproducible sessions.
 
 ### Full Validation Script
 

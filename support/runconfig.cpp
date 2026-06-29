@@ -86,6 +86,19 @@ RuntimeConfig parse_command_line( int aArgc, char const* const* aArgv )
 
 				config.smokeTestSeconds = seconds;
 			}
+            else if( 0 == std::strcmp( "seed", name ) )
+			{
+				unsigned seed = 0;
+				if( 1 != std::sscanf( value, "%u%c", &seed, &dummy ) )
+				{
+					throw Error( "Error while parsing command line\n"
+						"Value '%s' not valid for --seed; expected unsigned integer\n"
+						"Use --help to print available command line options", value );
+				}
+
+				config.fixedSeedEnabled = true;
+				config.fixedSeed = seed;
+			}
 			else
 			{
 				throw Error( "Error while parsing command line\n" 
@@ -116,6 +129,7 @@ and where <option> and <value> may be the following
   geometry    <width>x<height>    set initial window size to (width, height)
   fbshift     <shift>             scale framebuffer by 2^-<shift> (unsigned int)
   smoketest   <seconds>           auto-exit after N seconds and dump a frame
+  seed        <unsigned>          use deterministic RNG seed
 
 Additional flags:
   --selftest_assets               validate required image assets load and exit

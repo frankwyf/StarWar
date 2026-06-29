@@ -70,6 +70,7 @@ A small open-source 2D space shooter built with modern C++17, OpenGL, and GLFW.
 
 - `--selftest_assets`: validate that required images (for example `assets/earth.png`) can be loaded, then exit.
 - `--smoketest=<seconds>`: run a timed smoke session, save the last frame to `artifacts/smoketest-last-frame.ppm`, then exit.
+- `--seed=<unsigned>`: run with deterministic RNG for reproducible gameplay and smoke captures.
 
 ## Full Validation (Local)
 
