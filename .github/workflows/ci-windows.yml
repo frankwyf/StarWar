@@ -34,8 +34,8 @@ jobs:
           $exe = Get-ChildItem -Path bin -Filter 'main-release-x64-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $exe) { throw 'Release executable not found in bin/' }
           & $exe.FullName --selftest_assets
-          & $exe.FullName --smoketest=0.6 --geometry=1280x720 --fbshift=0
-          & $exe.FullName --smoketest=0.6 --geometry=960x540 --fbshift=1
+          & $exe.FullName --smoketest=0.6 --geometry=1280x720 --fbshift=0 --seed=42
+          & $exe.FullName --smoketest=0.6 --geometry=960x540 --fbshift=1 --seed=42
           if (!(Test-Path artifacts\smoketest-last-frame.ppm)) { throw 'Smoke matrix frame artifact missing' }
 
       - name: Upload smoke frame artifact

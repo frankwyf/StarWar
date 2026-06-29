@@ -50,12 +50,14 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 - Large asteroid hits can create smaller split asteroids
 - Enemy ships fire toward the player with slight spread (not perfect hitscan)
 - Elite enemy variants appear in higher waves (faster, tougher, more aggressive)
+- Every 5 waves can trigger a temporary surge period (more pressure)
 - Bosses have much higher HP and multi-shot attacks
 - Weapon levels improve as waves increase:
   - **Lv1**: Single shot
   - **Lv2**: Tri-shot spread
   - **Lv3**: Faster fire + stronger damage
   - **Lv4**: Wide-angle burst + rear defensive shot
+- Elite kills can drop **Overdrive** pickups (temporary high-output mode)
 
 ### Automation / QA Commands
 
@@ -66,6 +68,10 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 ### Full Validation Script
 
 - `tools/run-full-validation.ps1` runs build, tests, runtime checks, smoke capture, and package validation.
+
+### Optional Balance File
+
+- `config/gameplay.cfg` lets you tune wave scaling and elite behavior without code changes.
 
 ### Survival Tips
 

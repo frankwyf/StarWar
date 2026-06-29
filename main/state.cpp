@@ -23,6 +23,9 @@ void state_update( State& aState, float aDeltaSeconds )
 	if( aState.rapidFireTime > 0.f )
 		aState.rapidFireTime = std::max( 0.f, aState.rapidFireTime - aDeltaSeconds );
 
+	if( aState.overdriveTime > 0.f )
+		aState.overdriveTime = std::max( 0.f, aState.overdriveTime - aDeltaSeconds );
+
 	if( aState.comboTimer > 0.f )
 		aState.comboTimer = std::max( 0.f, aState.comboTimer - aDeltaSeconds );
 	else
@@ -33,6 +36,9 @@ void state_update( State& aState, float aDeltaSeconds )
 
 	if( aState.waveBannerTime > 0.f )
 		aState.waveBannerTime = std::max( 0.f, aState.waveBannerTime - aDeltaSeconds );
+
+	if( aState.surgeTime > 0.f )
+		aState.surgeTime = std::max( 0.f, aState.surgeTime - aDeltaSeconds );
 
 	if( aState.screenShakeTime > 0.f )
 	{

@@ -33,6 +33,12 @@ foreach ($name in $requiredAssets) {
     }
 }
 
+$configDir = Join-Path $DistPath "config"
+$gameplayCfg = Join-Path $configDir "gameplay.cfg"
+if (!(Test-Path $gameplayCfg)) {
+    throw "Missing gameplay tuning config: $gameplayCfg"
+}
+
 Write-Host "Package validation passed."
 Write-Host "- Executable: $exe"
 Write-Host "- Assets verified: $($requiredAssets -join ', ')"

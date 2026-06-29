@@ -17,6 +17,7 @@ A small open-source 2D space shooter built with modern C++17, OpenGL, and GLFW.
 - Modern `C++17` codebase with clean module boundaries
 - Fast gameplay loop with asteroids, enemy ships, and boss waves
 - Progressive enemy roster including elite variants on higher waves
+- Wave surge events every 5 waves and elite-exclusive overdrive drops
 - Difficulty selection: `Easy`, `Normal`, `Hard`
 - Score, shield, lives, and weapon progression systems
 - GitHub Actions automated Windows build and release packaging
@@ -75,6 +76,11 @@ A small open-source 2D space shooter built with modern C++17, OpenGL, and GLFW.
 ## Full Validation (Local)
 
 - Run `tools/run-full-validation.ps1` to execute build + unit tests + runtime self-test + smoke-test + package validation in one command.
+
+## Balance Tuning (Optional)
+
+- File: `config/gameplay.cfg`
+- You can adjust elite spawn chance and damage scaling without recompiling.
 
 ## Project Structure
 

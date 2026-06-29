@@ -59,6 +59,7 @@ namespace
 	constexpr float kStartCountdownSeconds = 3.f;
 	constexpr float kComboWindowSeconds = 3.5f;
 	constexpr float kRapidFireDuration = 6.0f;
+  constexpr float kOverdriveDuration = 5.0f;
 	constexpr float kExhaustInterval = 0.025f;
 	constexpr float kExhaustLife = 0.55f;
 	constexpr float kExhaustSpeed = 160.f;
@@ -78,7 +79,8 @@ namespace
 	enum class PickupType
 	{
 		shield,
-		rapidfire
+       rapidfire,
+		overdrive
 	};
 
 	enum class AudioEvent
@@ -150,6 +152,53 @@ namespace
 				aState.difficulty = d <= 0 ? EDifficulty::easy : (d >= 2 ? EDifficulty::hard : EDifficulty::normal);
 			}
 		}
+	}
+
+	struct GameplayTuning
+	{
+		float enemyHpWaveScale = 0.08f;
+		float eliteBaseChance = 0.05f;
+		float eliteWaveChanceScale = 0.01f;
+		float eliteMaxChance = 0.22f;
+		float playerBaseDamage = 1.f;
+		float playerLv3Damage = 1.4f;
+	};
+
+	GameplayTuning load_gameplay_tuning_()
+	{
+		GameplayTuning tuning;
+		auto const root = project_root_guess_();
+		auto const path = root / "config" / "gameplay.cfg";
+		if( !std::filesystem::exists( path ) )
+			return tuning;
+
+		std::ifstream fin( path );
+		if( !fin )
+			return tuning;
+
+		auto read_float = [&]( std::string const& key, float& value, std::string const& line )
+		{
+			auto const eq = line.find( '=' );
+			if( eq == std::string::npos )
+				return;
+			auto const k = line.substr( 0, eq );
+			if( k != key )
+				return;
+			value = std::strtof( line.substr( eq + 1 ).c_str(), nullptr );
+		};
+
+		std::string line;
+		while( std::getline( fin, line ) )
+		{
+			read_float( "enemy_hp_wave_scale", tuning.enemyHpWaveScale, line );
+			read_float( "elite_base_chance", tuning.eliteBaseChance, line );
+			read_float( "elite_wave_chance_scale", tuning.eliteWaveChanceScale, line );
+			read_float( "elite_max_chance", tuning.eliteMaxChance, line );
+			read_float( "player_base_damage", tuning.playerBaseDamage, line );
+			read_float( "player_lv3_damage", tuning.playerLv3Damage, line );
+		}
+
+		return tuning;
 	}
 
 	void save_profile_( State const& aState )
@@ -677,6 +726,7 @@ int main( int aArgc, char* aArgv[] ) try
 	// Runtime state
 	State state;
     load_profile_( state );
+    auto const gameplay = load_gameplay_tuning_();
 	std::vector<Bullet> bullets;
 	bullets.reserve( 256 );
 	std::vector<Enemy> enemies;
@@ -893,6 +943,8 @@ int main( int aArgc, char* aArgv[] ) try
 			state.fireCooldown = state.weaponLevel >= 4 ? 0.07f : (state.weaponLevel >= 3 ? 0.09f : 0.18f);
 			if( state.rapidFireTime > 0.f )
 				state.fireCooldown *= 0.45f;
+            if( state.overdriveTime > 0.f )
+				state.fireCooldown *= 0.68f;
 			spawn_burst_fx_( fx, muzzle, ColorU8_sRGB{ 255, 220, 120 }, 3, 120.f, rng );
 			play_audio_event_( AudioEvent::fire, state.audioEnabled );
 		}
@@ -911,8 +963,13 @@ int main( int aArgc, char* aArgv[] ) try
 
         if( !state.paused && !state.showStartScreen && !state.gameOver && !state.countdownActive && enemies.empty() )
 		{
-			auto const enemySpeedScale = difficulty_enemy_speed_scale_( state.difficulty );
-			auto const enemyFireScale = difficulty_enemy_fire_scale_( state.difficulty );
+         auto enemySpeedScale = difficulty_enemy_speed_scale_( state.difficulty );
+			auto enemyFireScale = difficulty_enemy_fire_scale_( state.difficulty );
+			if( state.surgeTime > 0.f )
+			{
+				enemySpeedScale *= 1.18f;
+				enemyFireScale *= 0.82f;
+			}
 			float const waveScale = 1.f + state.wave * 0.04f; // progressive difficulty per wave
 			if( state.wave % 4 == 0 )
 			{
@@ -940,7 +997,7 @@ int main( int aArgc, char* aArgv[] ) try
 					e.pos = { (i % 2 == 0 ? -40.f : fbwidth + 40.f), sideY(rng) };
 					e.vel = { ((i % 2 == 0 ? 100.f : -100.f) * (1.f + 0.06f * state.wave)) * enemySpeedScale, ((unit01(rng) - 0.5f) * 30.f) * enemySpeedScale };
 					e.fireCooldown = (0.5f + unit01(rng)) * enemyFireScale;
-					e.hp = 1.f + state.wave * 0.08f; // enemies get tougher
+                 e.hp = 1.f + state.wave * gameplay.enemyHpWaveScale; // enemies get tougher
 					float const roll = unit01( rng );
 					if( roll < 0.22f )
 					{
@@ -955,7 +1012,11 @@ int main( int aArgc, char* aArgv[] ) try
 
 					if( state.wave >= 3 )
 					{
-						float const eliteChance = std::clamp( 0.05f + state.wave * 0.01f, 0.f, 0.22f );
+                     float const eliteChance = std::clamp(
+							gameplay.eliteBaseChance + state.wave * gameplay.eliteWaveChanceScale,
+							0.f,
+							gameplay.eliteMaxChance
+						);
 						if( unit01(rng) < eliteChance )
 						{
 							e.elite = true;
@@ -975,6 +1036,8 @@ int main( int aArgc, char* aArgv[] ) try
 			if( state.wave >= 2 ) state.weaponLevel = 2;
 			if( state.wave >= 4 ) state.weaponLevel = 3;
 			if( state.wave >= 7 ) state.weaponLevel = 4;
+            if( state.wave % 5 == 0 )
+				state.surgeTime = 8.f;
 			state.shield = std::min( state.shieldMax, state.shield + 22.f );
 			state.waveBannerTime = 2.0f;
 			state.screenShakeTime = std::max( state.screenShakeTime, 0.08f );
@@ -983,8 +1046,13 @@ int main( int aArgc, char* aArgv[] ) try
 
        if( !state.paused && !state.showStartScreen && !state.gameOver && !state.countdownActive )
 		{
-			auto const enemySpeedScale = difficulty_enemy_speed_scale_( state.difficulty );
-			auto const enemyFireScale = difficulty_enemy_fire_scale_( state.difficulty );
+         auto enemySpeedScale = difficulty_enemy_speed_scale_( state.difficulty );
+			auto enemyFireScale = difficulty_enemy_fire_scale_( state.difficulty );
+			if( state.surgeTime > 0.f )
+			{
+				enemySpeedScale *= 1.18f;
+				enemyFireScale *= 0.82f;
+			}
 			for( auto& e : enemies )
 			{
 				if( state.gameOver ) break;
@@ -1078,7 +1146,10 @@ int main( int aArgc, char* aArgv[] ) try
 					auto d = eit->pos - it->pos;
 					if( dot(d,d) <= hitR*hitR )
 					{
-						eit->hp -= state.weaponLevel >= 3 ? 1.4f : 1.f;
+                     float dmg = state.weaponLevel >= 3 ? gameplay.playerLv3Damage : gameplay.playerBaseDamage;
+						if( state.overdriveTime > 0.f )
+							dmg *= 1.4f;
+						eit->hp -= dmg;
 						consumed = true;
 						spawn_burst_fx_( fx, it->pos, ColorU8_sRGB{ 255, 140, 90 }, eit->boss ? 7 : 4, eit->boss ? 180.f : 120.f, rng );
 						if( eit->hp <= 0.f )
@@ -1092,13 +1163,19 @@ int main( int aArgc, char* aArgv[] ) try
                          if( eit->elite ) ++state.eliteKills;
 								if( eit->boss ) ++state.bossesDefeated;
                          scorePopups.push_back( ScorePopup{ eit->pos, killScore, kScorePopupLife, eit->boss ? ColorU8_sRGB{ 255, 100, 100 } : (eit->elite ? ColorU8_sRGB{ 140, 255, 210 } : ColorU8_sRGB{ 255, 230, 100 }) } );
-								if( !eit->boss && unit01(rng) < 0.28f )
+                         if( !eit->boss && unit01(rng) < 0.30f )
 								{
+                              PickupType ptype = PickupType::shield;
+								if( eit->elite )
+									ptype = unit01(rng) < 0.55f ? PickupType::overdrive : PickupType::rapidfire;
+								else
+									ptype = unit01(rng) < 0.55f ? PickupType::shield : PickupType::rapidfire;
+
 									pickups.push_back( Pickup{
 										eit->pos,
 										Vec2f{ (unit01(rng)-0.5f) * 90.f, (unit01(rng)-0.5f) * 90.f },
 										9.f,
-										unit01(rng) < 0.55f ? PickupType::shield : PickupType::rapidfire
+                                    ptype
 									} );
 								}
 								play_audio_event_( AudioEvent::enemyDown, state.audioEnabled );
@@ -1186,9 +1263,14 @@ int main( int aArgc, char* aArgv[] ) try
 					{
 						state.shield = std::min( state.shieldMax, state.shield + 26.f );
 					}
-					else
+                    else if( pit->type == PickupType::rapidfire )
 					{
 						state.rapidFireTime = std::max( state.rapidFireTime, kRapidFireDuration );
+					}
+                  else
+					{
+						state.overdriveTime = std::max( state.overdriveTime, kOverdriveDuration );
+						state.shield = std::min( state.shieldMax, state.shield + 10.f );
 					}
 					state.waveBannerTime = std::max( state.waveBannerTime, 1.0f );
 					play_audio_event_( AudioEvent::pickup, state.audioEnabled );
@@ -1369,7 +1451,9 @@ int main( int aArgc, char* aArgv[] ) try
 
 		for( auto const& p : pickups )
 		{
-			ColorU8_sRGB c = p.type == PickupType::shield ? ColorU8_sRGB{ 90, 190, 255 } : ColorU8_sRGB{ 255, 220, 110 };
+           ColorU8_sRGB c = p.type == PickupType::shield
+				? ColorU8_sRGB{ 90, 190, 255 }
+				: (p.type == PickupType::rapidfire ? ColorU8_sRGB{ 255, 220, 110 } : ColorU8_sRGB{ 110, 255, 210 });
 			draw_rectangle_outline( surface, p.pos + renderShake - Vec2f{ 9.f, 9.f }, p.pos + renderShake + Vec2f{ 9.f, 9.f }, c );
 			draw_rectangle_solid( surface, p.pos + renderShake - Vec2f{ 5.f, 5.f }, p.pos + renderShake + Vec2f{ 5.f, 5.f }, c );
 			// Pulsing inner
@@ -1460,6 +1544,18 @@ int main( int aArgc, char* aArgv[] ) try
 			std::snprintf( rapidText, sizeof(rapidText), "RAPID FIRE %.1fs", state.rapidFireTime );
 			draw_text_5x7_( surface, { 20.f, 88.f }, 2, ColorU8_sRGB{ 255, 240, 140 }, rapidText );
 		}
+		if( state.overdriveTime > 0.f )
+		{
+			char overText[64] = {};
+			std::snprintf( overText, sizeof(overText), "OVERDRIVE %.1fs", state.overdriveTime );
+			draw_text_5x7_( surface, { 20.f, 110.f }, 2, ColorU8_sRGB{ 120, 255, 210 }, overText );
+		}
+		if( state.surgeTime > 0.f )
+		{
+			char surgeText[64] = {};
+			std::snprintf( surgeText, sizeof(surgeText), "WAVE SURGE %.1fs", state.surgeTime );
+			draw_text_5x7_( surface, { 20.f, 132.f }, 2, ColorU8_sRGB{ 255, 170, 120 }, surgeText );
+		}
 
 		// Wave and kills info
 		if( !state.showStartScreen && !state.countdownActive )
@@ -1500,7 +1596,7 @@ int main( int aArgc, char* aArgv[] ) try
 				Vec2f mmPos = mmCenter + Vec2f{ rel.x, -rel.y };
 				if( mmPos.x > mmX + 3.f && mmPos.x < mmX + kMinimapSize - 3.f && mmPos.y > mmY + 3.f && mmPos.y < mmY + kMinimapSize - 3.f )
 				{
-					ColorU8_sRGB ec = e.boss ? ColorU8_sRGB{ 255, 60, 60 } : ColorU8_sRGB{ 255, 160, 60 };
+                  ColorU8_sRGB ec = e.boss ? ColorU8_sRGB{ 255, 60, 60 } : (e.elite ? ColorU8_sRGB{ 100, 255, 220 } : ColorU8_sRGB{ 255, 160, 60 });
 					float esz = e.boss ? 3.f : 1.5f;
 					draw_rectangle_solid( surface, mmPos - Vec2f{ esz, esz }, mmPos + Vec2f{ esz, esz }, ec );
 				}

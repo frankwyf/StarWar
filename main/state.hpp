@@ -58,10 +58,12 @@ struct State
 	float shieldRegenCooldown = 0.f;
 	float shieldRegenRate = 0.f;
 	float rapidFireTime = 0.f;
+ float overdriveTime = 0.f;
 	int comboCount = 0;
 	float comboTimer = 0.f;
 	float hitFlashTime = 0.f;
 	float waveBannerTime = 0.f;
+    float surgeTime = 0.f;
 	float screenShakeTime = 0.f;
 	float screenShakeStrength = 0.f;
 	bool audioEnabled = true;

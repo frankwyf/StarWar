@@ -42,7 +42,7 @@ jobs:
         run: |
           $gameExe = Get-ChildItem -Path bin -Filter 'main-release-x64-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $gameExe) { throw 'Release executable not found in bin/' }
-          & $gameExe.FullName --smoketest=0.7 --geometry=1280x720 --fbshift=0
+          & $gameExe.FullName --smoketest=0.7 --geometry=1280x720 --fbshift=0 --seed=42
           if (!(Test-Path artifacts\smoketest-last-frame.ppm)) { throw 'Smoke validation frame missing' }
 
       - name: Upload release smoke frame
@@ -61,6 +61,7 @@ jobs:
           if (-not $gameExe) { throw 'StarWar executable was not produced in bin/' }
           Copy-Item $gameExe.FullName dist/StarWar.exe
           if (Test-Path assets) { Copy-Item -Recurse -Force assets dist/assets }
+          if (Test-Path config) { Copy-Item -Recurse -Force config dist/config }
           if (Test-Path README.md) { Copy-Item README.md dist/README.md }
           if (Test-Path LICENSE) { Copy-Item LICENSE dist/LICENSE }
 
