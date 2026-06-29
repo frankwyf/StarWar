@@ -35,3 +35,9 @@ jobs:
           & $exe.FullName --smoketest=0.6 --geometry=1280x720 --fbshift=0
           & $exe.FullName --smoketest=0.6 --geometry=960x540 --fbshift=1
           if (!(Test-Path artifacts\smoketest-last-frame.ppm)) { throw 'Smoke matrix frame artifact missing' }
+
+      - name: Upload smoke frame artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-frame-preview
+          path: artifacts/smoketest-last-frame.ppm

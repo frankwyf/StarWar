@@ -37,6 +37,12 @@ jobs:
           & $gameExe.FullName --smoketest=0.7 --geometry=1280x720 --fbshift=0
           if (!(Test-Path artifacts\smoketest-last-frame.ppm)) { throw 'Smoke validation frame missing' }
 
+      - name: Upload release smoke frame
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-smoke-frame
+          path: artifacts/smoketest-last-frame.ppm
+
       - name: Prepare package
         shell: pwsh
         run: |
