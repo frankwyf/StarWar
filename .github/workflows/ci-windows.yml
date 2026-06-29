@@ -10,6 +10,7 @@ on:
 jobs:
   build-and-test:
     runs-on: windows-latest
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -27,6 +28,7 @@ jobs:
 
       - name: Run smoke matrix scenarios (best effort)
         continue-on-error: true
+        timeout-minutes: 4
         shell: pwsh
         run: |
           $exe = Get-ChildItem -Path bin -Filter 'main-release-x64-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
