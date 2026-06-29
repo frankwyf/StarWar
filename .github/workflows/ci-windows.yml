@@ -1,4 +1,5 @@
 name: CI (Windows Build + Tests)
+name: CI (Windows Full Validation)
 
 on:
   push:
@@ -18,35 +19,19 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Build lines-test (Debug x64)
-        run: msbuild lines-test\lines-test.vcxproj /m /p:Configuration=debug /p:Platform=x64
-
-      - name: Build triangles-test (Debug x64)
-        run: msbuild triangles-test\triangles-test.vcxproj /m /p:Configuration=debug /p:Platform=x64
-
-      - name: Run lines-test
+      - name: Run full validation script (Debug)
         shell: pwsh
-        run: |
-          $exe = "bin/lines-test-debug-x64-msc-v145.exe"
-          if (!(Test-Path $exe)) { throw "Missing test executable: $exe" }
-          & $exe --reporter compact
+        run: tools/run-full-validation.ps1 -Configuration debug -Platform x64
 
-      - name: Run triangles-test
-        shell: pwsh
-        run: |
-          $exe = "bin/triangles-test-debug-x64-msc-v145.exe"
-          if (!(Test-Path $exe)) { throw "Missing test executable: $exe" }
-          & $exe --reporter compact
-
-      - name: Build main (Release x64)
+      - name: Extra smoke matrix (release binary)
         run: msbuild main\main.vcxproj /m /p:Configuration=release /p:Platform=x64
 
-      - name: Run main asset self-test
+      - name: Run smoke matrix scenarios
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path bin -Filter 'main-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $exe) { throw 'Main executable not found in bin/' }
+          $exe = Get-ChildItem -Path bin -Filter 'main-release-x64-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) { throw 'Release executable not found in bin/' }
           & $exe.FullName --selftest_assets
-
-      - name: Build main (Debug x64)
-        run: msbuild main\main.vcxproj /m /p:Configuration=debug /p:Platform=x64
+          & $exe.FullName --smoketest=0.6 --geometry=1280x720 --fbshift=0
+          & $exe.FullName --smoketest=0.6 --geometry=960x540 --fbshift=1
+          if (!(Test-Path artifacts\smoketest-last-frame.ppm)) { throw 'Smoke matrix frame artifact missing' }

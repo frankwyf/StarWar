@@ -38,6 +38,7 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 - **Space**: Toggle pilot mode
 - **P**: Pause / resume
 - **F12**: Save current frame to `artifacts/`
+- **F3**: Toggle debug/perf overlay
 - **R**: Restart run
 - **M**: Toggle audio on/off
 - **Tab**: Toggle minimap
@@ -59,6 +60,10 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 
 - `--selftest_assets`: checks runtime asset loading and exits.
 - `--smoketest=<seconds>`: timed gameplay smoke run with final frame capture.
+
+### Full Validation Script
+
+- `tools/run-full-validation.ps1` runs build, tests, runtime checks, smoke capture, and package validation.
 
 ### Survival Tips
 

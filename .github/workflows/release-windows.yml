@@ -1,4 +1,5 @@
 name: Build and Release (Windows)
+name: Build and Release (Windows)
 
 on:
   push:
@@ -26,6 +27,15 @@ jobs:
 
       - name: Build StarWar release
         run: msbuild main\\main.vcxproj /m /p:Configuration=release /p:Platform=x64
+
+      - name: Runtime validation (release binary)
+        shell: pwsh
+        run: |
+          $gameExe = Get-ChildItem -Path bin -Filter 'main-release-x64-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $gameExe) { throw 'Release executable not found in bin/' }
+          & $gameExe.FullName --selftest_assets
+          & $gameExe.FullName --smoketest=0.7 --geometry=1280x720 --fbshift=0
+          if (!(Test-Path artifacts\smoketest-last-frame.ppm)) { throw 'Smoke validation frame missing' }
 
       - name: Prepare package
         shell: pwsh

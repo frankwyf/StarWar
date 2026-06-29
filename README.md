@@ -46,6 +46,7 @@ A small open-source 2D space shooter built with modern C++17, OpenGL, and GLFW.
 | Toggle pilot mode | `Space` |
 | Pause / Resume | `P` |
 | Save current frame | `F12` |
+| Toggle debug/perf overlay | `F3` |
 | Restart run | `R` |
 | Toggle audio | `M` |
 | Toggle minimap | `Tab` |
@@ -68,6 +69,10 @@ A small open-source 2D space shooter built with modern C++17, OpenGL, and GLFW.
 
 - `--selftest_assets`: validate that required images (for example `assets/earth.png`) can be loaded, then exit.
 - `--smoketest=<seconds>`: run a timed smoke session, save the last frame to `artifacts/smoketest-last-frame.ppm`, then exit.
+
+## Full Validation (Local)
+
+- Run `tools/run-full-validation.ps1` to execute build + unit tests + runtime self-test + smoke-test + package validation in one command.
 
 ## Project Structure
 
