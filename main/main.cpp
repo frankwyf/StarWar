@@ -59,7 +59,6 @@ namespace
 	constexpr float kStartCountdownSeconds = 3.f;
 	constexpr float kComboWindowSeconds = 3.5f;
 	constexpr float kRapidFireDuration = 6.0f;
-  constexpr float kOverdriveDuration = 5.0f;
 	constexpr float kExhaustInterval = 0.025f;
 	constexpr float kExhaustLife = 0.55f;
 	constexpr float kExhaustSpeed = 160.f;
@@ -160,8 +159,12 @@ namespace
 		float eliteBaseChance = 0.05f;
 		float eliteWaveChanceScale = 0.01f;
 		float eliteMaxChance = 0.22f;
+       float eliteDropChance = 0.30f;
 		float playerBaseDamage = 1.f;
 		float playerLv3Damage = 1.4f;
+      float overdriveDuration = 5.f;
+		int surgeEveryWaves = 5;
+		float surgeDuration = 8.f;
 	};
 
 	GameplayTuning load_gameplay_tuning_()
@@ -187,6 +190,17 @@ namespace
 			value = std::strtof( line.substr( eq + 1 ).c_str(), nullptr );
 		};
 
+		auto read_int = [&]( std::string const& key, int& value, std::string const& line )
+		{
+			auto const eq = line.find( '=' );
+			if( eq == std::string::npos )
+				return;
+			auto const k = line.substr( 0, eq );
+			if( k != key )
+				return;
+			value = std::atoi( line.substr( eq + 1 ).c_str() );
+		};
+
 		std::string line;
 		while( std::getline( fin, line ) )
 		{
@@ -194,9 +208,18 @@ namespace
 			read_float( "elite_base_chance", tuning.eliteBaseChance, line );
 			read_float( "elite_wave_chance_scale", tuning.eliteWaveChanceScale, line );
 			read_float( "elite_max_chance", tuning.eliteMaxChance, line );
+          read_float( "elite_drop_chance", tuning.eliteDropChance, line );
 			read_float( "player_base_damage", tuning.playerBaseDamage, line );
 			read_float( "player_lv3_damage", tuning.playerLv3Damage, line );
+           read_float( "overdrive_duration", tuning.overdriveDuration, line );
+			read_int( "surge_every_waves", tuning.surgeEveryWaves, line );
+			read_float( "surge_duration", tuning.surgeDuration, line );
 		}
+
+		tuning.eliteDropChance = std::clamp( tuning.eliteDropChance, 0.f, 1.f );
+		tuning.overdriveDuration = std::clamp( tuning.overdriveDuration, 0.5f, 30.f );
+		tuning.surgeEveryWaves = std::max( 2, tuning.surgeEveryWaves );
+		tuning.surgeDuration = std::clamp( tuning.surgeDuration, 1.f, 30.f );
 
 		return tuning;
 	}
@@ -1035,9 +1058,9 @@ int main( int aArgc, char* aArgv[] ) try
 			++state.wave;
 			if( state.wave >= 2 ) state.weaponLevel = 2;
 			if( state.wave >= 4 ) state.weaponLevel = 3;
-			if( state.wave >= 7 ) state.weaponLevel = 4;
-            if( state.wave % 5 == 0 )
-				state.surgeTime = 8.f;
+            if( state.wave >= 7 ) state.weaponLevel = 4;
+			if( state.wave % gameplay.surgeEveryWaves == 0 )
+				state.surgeTime = gameplay.surgeDuration;
 			state.shield = std::min( state.shieldMax, state.shield + 22.f );
 			state.waveBannerTime = 2.0f;
 			state.screenShakeTime = std::max( state.screenShakeTime, 0.08f );
@@ -1163,7 +1186,7 @@ int main( int aArgc, char* aArgv[] ) try
                          if( eit->elite ) ++state.eliteKills;
 								if( eit->boss ) ++state.bossesDefeated;
                          scorePopups.push_back( ScorePopup{ eit->pos, killScore, kScorePopupLife, eit->boss ? ColorU8_sRGB{ 255, 100, 100 } : (eit->elite ? ColorU8_sRGB{ 140, 255, 210 } : ColorU8_sRGB{ 255, 230, 100 }) } );
-                         if( !eit->boss && unit01(rng) < 0.30f )
+                            if( !eit->boss && unit01(rng) < gameplay.eliteDropChance )
 								{
                               PickupType ptype = PickupType::shield;
 								if( eit->elite )
@@ -1269,7 +1292,7 @@ int main( int aArgc, char* aArgv[] ) try
 					}
                   else
 					{
-						state.overdriveTime = std::max( state.overdriveTime, kOverdriveDuration );
+                      state.overdriveTime = std::max( state.overdriveTime, gameplay.overdriveDuration );
 						state.shield = std::min( state.shieldMax, state.shield + 10.f );
 					}
 					state.waveBannerTime = std::max( state.waveBannerTime, 1.0f );

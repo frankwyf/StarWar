@@ -80,7 +80,7 @@ A small open-source 2D space shooter built with modern C++17, OpenGL, and GLFW.
 ## Balance Tuning (Optional)
 
 - File: `config/gameplay.cfg`
-- You can adjust elite spawn chance and damage scaling without recompiling.
+- You can adjust elite spawn/drop chance, damage scaling, and surge timing without recompiling.
 
 ## Project Structure
 

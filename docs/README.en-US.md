@@ -71,7 +71,7 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 
 ### Optional Balance File
 
-- `config/gameplay.cfg` lets you tune wave scaling and elite behavior without code changes.
+- `config/gameplay.cfg` lets you tune wave scaling, elite behavior, and surge timing without code changes.
 
 ### Survival Tips
 
