@@ -477,6 +477,12 @@ namespace
 			return;
 		}
 
+		if( GLFW_KEY_F3 == aKey && GLFW_PRESS == aAction )
+		{
+			state->showDebugOverlay = !state->showDebugOverlay;
+			return;
+		}
+
 		if( GLFW_KEY_ENTER == aKey && GLFW_PRESS == aAction )
 		{
 			if( state->showStartScreen )
@@ -740,6 +746,20 @@ int main( int aArgc, char* aArgv[] ) try
 	auto lastUpdateTime = Clock::now();
 	float smokeElapsed = 0.f;
 	bool smokeCaptureDone = false;
+	float smokeFireTimer = 0.f;
+	bool const smokeAutomation = config.smokeTestSeconds > 0.f;
+
+	if( smokeAutomation )
+	{
+		state.showStartScreen = false;
+		state.gameStarted = true;
+		state.countdownActive = false;
+		state.inputMode = EInputMode::piloting;
+		state.lives = std::max( 1, 3 + difficulty_extra_start_lives_( state.difficulty ) );
+		state.shieldMax = difficulty_start_shield_( state.difficulty );
+		state.shield = state.shieldMax;
+		state.shieldRegenRate = difficulty_shield_regen_rate_( state.difficulty );
+	}
 
 	while( !glfwWindowShouldClose( window ) )
 	{
@@ -793,6 +813,23 @@ int main( int aArgc, char* aArgv[] ) try
 		lastUpdateTime = now;
 		auto const dt = state.paused ? 0.f : frameDt;
 		smokeElapsed += frameDt;
+
+		if( smokeAutomation )
+		{
+			state.showStartScreen = false;
+			state.gameStarted = true;
+			state.countdownActive = false;
+			state.paused = false;
+
+			state.player.angle = std::sin( smokeElapsed * 0.9f ) * 2.5f;
+			state.thrustKeyHeld = std::sin( smokeElapsed * 1.3f ) > -0.15f;
+			smokeFireTimer -= frameDt;
+			if( smokeFireTimer <= 0.f )
+			{
+				state.fireRequested = true;
+				smokeFireTimer = 0.075f;
+			}
+		}
 
 		if( state.restartRequested )
 		{
@@ -1471,6 +1508,36 @@ int main( int aArgc, char* aArgv[] ) try
 			}
 		}
 
+		if( state.showDebugOverlay )
+		{
+			float const panelW = 280.f;
+			float const panelH = 110.f;
+			Vec2f const p0{ float(fbwidth) - panelW - 14.f, 80.f };
+			Vec2f const p1{ float(fbwidth) - 14.f, 80.f + panelH };
+			draw_rectangle_solid( surface, p0, p1, ColorU8_sRGB{ 10, 18, 34 } );
+			draw_rectangle_outline( surface, p0, p1, ColorU8_sRGB{ 90, 130, 180 } );
+
+			char perfText[128] = {};
+			std::snprintf( perfText, sizeof(perfText), "FPS %.1f  FRAME %.2fms", state.displayFps, state.frameTimeMs );
+			draw_text_5x7_( surface, { p0.x + 8.f, p1.y - 18.f }, 1, ColorU8_sRGB{ 190, 220, 255 }, perfText );
+
+			float const gx0 = p0.x + 8.f;
+			float const gy0 = p0.y + 10.f;
+			float const gw = panelW - 16.f;
+			float const gh = panelH - 36.f;
+			draw_rectangle_outline( surface, { gx0, gy0 }, { gx0 + gw, gy0 + gh }, ColorU8_sRGB{ 70, 95, 130 } );
+
+			for( std::size_t i = 0; i < state.frameTimeHistory.size(); ++i )
+			{
+				std::size_t idx = (state.frameTimeHistoryIndex + i) % state.frameTimeHistory.size();
+				float ms = state.frameTimeHistory[idx];
+				float yNorm = std::clamp( ms / 33.3f, 0.f, 1.f );
+				float x = gx0 + (float(i) / float(state.frameTimeHistory.size() - 1)) * gw;
+				float y = gy0 + yNorm * gh;
+				draw_rectangle_solid( surface, { x, y }, { x + 1.f, y + 1.f }, ColorU8_sRGB{ 120, 220, 140 } );
+			}
+		}
+
 		if( state.showStartScreen )
 		{
 			Vec2f const pmin{ 60.f, 60.f };
@@ -1498,7 +1565,7 @@ int main( int aArgc, char* aArgv[] ) try
 			draw_text_5x7_( surface, { leftX, topY + 148.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "SPACE: TOGGLE PILOT MODE" );
 			draw_text_5x7_( surface, { leftX, topY + 172.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "R: RESTART  M: AUDIO  ESC: QUIT" );
 			draw_text_5x7_( surface, { leftX, topY + 196.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "TAB: TOGGLE MINIMAP" );
-			draw_text_5x7_( surface, { leftX, topY + 220.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "P: PAUSE  F12: SAVE FRAME" );
+          draw_text_5x7_( surface, { leftX, topY + 220.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "P: PAUSE  F12: SAVE FRAME  F3: DEBUG" );
 
 			draw_text_5x7_( surface, { rightX, topY }, 2, ColorU8_sRGB{ 170, 210, 255 }, "GAMEPLAY LOOP" );
 			draw_text_5x7_( surface, { rightX, topY + 28.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "1. SURVIVE ASTEROIDS AND ENEMY FIRE" );

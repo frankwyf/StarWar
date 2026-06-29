@@ -1,6 +1,8 @@
 #ifndef STATE_HPP_BE728505_2D00_4E60_9F37_6C58B3569251
 #define STATE_HPP_BE728505_2D00_4E60_9F37_6C58B3569251
 
+#include <array>
+
 #include <glad.h> // Make sure <GL/gl.h> isn't being included.
 #include <GLFW/glfw3.h>
 
@@ -78,11 +80,15 @@ struct State
 	bool showMinimap = true;
 	bool paused = false;
 	bool screenshotRequested = false;
+	bool showDebugOverlay = false;
 
 	// FPS tracking
 	float fpsAccum = 0.f;
 	int fpsFrames = 0;
 	float displayFps = 0.f;
+	float frameTimeMs = 0.f;
+	std::array<float, 120> frameTimeHistory{};
+	std::size_t frameTimeHistoryIndex = 0;
 
 	// Score popup
 	float slowMotionTime = 0.f;

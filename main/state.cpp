@@ -50,6 +50,9 @@ void state_update( State& aState, float aDeltaSeconds )
 	// FPS tracking
 	aState.fpsAccum += aDeltaSeconds;
 	++aState.fpsFrames;
+   aState.frameTimeMs = aDeltaSeconds * 1000.f;
+	aState.frameTimeHistory[aState.frameTimeHistoryIndex] = aState.frameTimeMs;
+	aState.frameTimeHistoryIndex = (aState.frameTimeHistoryIndex + 1) % aState.frameTimeHistory.size();
 	if( aState.fpsAccum >= 0.5f )
 	{
 		aState.displayFps = float(aState.fpsFrames) / aState.fpsAccum;
