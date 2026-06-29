@@ -2,6 +2,9 @@
 
 #include <memory>
 #include <algorithm>
+#include <filesystem>
+#include <vector>
+#include <string>
 
 #include <cstdio>
 #include <cstring>
@@ -20,6 +23,28 @@ namespace
 		STBImageRGBA_( Index, Index, std::uint8_t* );
 		virtual ~STBImageRGBA_();
 	};
+
+	std::vector<std::filesystem::path> make_image_candidates_( std::filesystem::path const& aPath )
+	{
+		std::vector<std::filesystem::path> candidates;
+		candidates.reserve( 10 );
+
+		candidates.push_back( aPath );
+
+		if( !aPath.is_absolute() )
+		{
+			auto cwd = std::filesystem::current_path();
+			for( int i = 0; i < 8; ++i )
+			{
+				candidates.push_back( cwd / aPath );
+				if( !cwd.has_parent_path() )
+					break;
+				cwd = cwd.parent_path();
+			}
+		}
+
+		return candidates;
+	}
 }
 
 ImageRGBA::ImageRGBA()
@@ -38,9 +63,45 @@ std::unique_ptr<ImageRGBA> load_image( char const* aPath )
 	stbi_set_flip_vertically_on_load( true );
 
 	int w, h, channels;
-	stbi_uc* ptr = stbi_load( aPath, &w, &h, &channels, 4 );
+	stbi_uc* ptr = nullptr;
+
+	auto const candidates = make_image_candidates_( std::filesystem::path{ aPath } );
+	std::string loadedFrom;
+	for( auto const& path : candidates )
+	{
+		std::error_code ec;
+		if( !std::filesystem::exists( path, ec ) )
+			continue;
+
+		auto const pathStr = path.string();
+		ptr = stbi_load( pathStr.c_str(), &w, &h, &channels, 4 );
+		if( ptr )
+		{
+			loadedFrom = pathStr;
+			break;
+		}
+	}
+
 	if( !ptr )
-		throw Error( "Unable to load image \"%s\"", aPath );
+	{
+		char attempted[1024] = {};
+		std::size_t used = 0;
+		for( auto const& p : candidates )
+		{
+			auto const s = p.string();
+			if( used + s.size() + 3 >= sizeof(attempted) )
+				break;
+			if( used > 0 )
+			{
+				attempted[used++] = ';';
+				attempted[used++] = ' ';
+			}
+			std::memcpy( attempted + used, s.c_str(), s.size() );
+			used += s.size();
+		}
+
+		throw Error( "Unable to load image \"%s\" (attempted: %s)", aPath, attempted );
+	}
 
 	return std::make_unique<STBImageRGBA_>(
 		ImageRGBA::Index(w),
