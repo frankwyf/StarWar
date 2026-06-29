@@ -13,6 +13,8 @@ struct RuntimeConfig
 	unsigned initialWindowHeight = cfg::kInitialWindowHeight;
 
 	unsigned framebufferScaleShift = 0;
+  bool selfTestAssets = false;
+	float smokeTestSeconds = 0.f;
 };
 
 RuntimeConfig parse_command_line( int aArgc, char const* const* aArgv );

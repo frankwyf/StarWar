@@ -76,6 +76,8 @@ struct State
 
 	// Minimap
 	bool showMinimap = true;
+	bool paused = false;
+	bool screenshotRequested = false;
 
 	// FPS tracking
 	float fpsAccum = 0.f;

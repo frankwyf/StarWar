@@ -20,12 +20,16 @@ RuntimeConfig parse_command_line( int aArgc, char const* const* aArgv )
 		char name[128], value[128];
 		int ret = std::sscanf( aArgv[i], "--%127[a-zA-Z0-9_]=%127s", name, value );
 
-		if( ret == 1 )
+      if( ret == 1 )
 		{
 			if( 0 == std::strcmp( "help", name ) )
 			{
 				synopsis_( aArgv[0] );
 				std::exit( 0 );
+			}
+            else if( 0 == std::strcmp( "selftest_assets", name ) )
+			{
+				config.selfTestAssets = true;
 			}
 			else
 			{
@@ -63,6 +67,18 @@ RuntimeConfig parse_command_line( int aArgc, char const* const* aArgv )
 				config.initialWindowWidth = width;
 				config.initialWindowHeight = height;
 			}
+            else if( 0 == std::strcmp( "smoketest", name ) )
+			{
+				float seconds = 0.f;
+				if( 1 != std::sscanf( value, "%f%c", &seconds, &dummy ) )
+				{
+					throw Error( "Error while parsing command line\n"
+						"Value '%s' not valid for --smoketest; expected float seconds\n"
+						"Use --help to print available command line options", value );
+				}
+
+				config.smokeTestSeconds = seconds;
+			}
 			else
 			{
 				throw Error( "Error while parsing command line\n" 
@@ -92,6 +108,10 @@ Where <flag> may be one off the following
 and where <option> and <value> may be the following
   geometry    <width>x<height>    set initial window size to (width, height)
   fbshift     <shift>             scale framebuffer by 2^-<shift> (unsigned int)
+  smoketest   <seconds>           auto-exit after N seconds and dump a frame
+
+Additional flags:
+  --selftest_assets               validate required image assets load and exit
 
 Example:
   %s --geometry=1920x1080 --fbshift=1

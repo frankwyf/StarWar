@@ -8,9 +8,12 @@
 #include <vector>
 #include <algorithm>
 #include <string_view>
+#include <string>
 #include <cctype>
 #include <cmath>
 #include <thread>
+#include <filesystem>
+#include <fstream>
 
 #include <cstdio>
 #include <cstdlib>
@@ -28,6 +31,7 @@
 #include "../draw2d/surface.hpp"
 #include "../draw2d/draw.hpp"
 #include "../draw2d/shape.hpp"
+#include "../draw2d/image.hpp"
 
 #include "../support/error.hpp"
 #include "../support/context.hpp"
@@ -90,6 +94,97 @@ namespace
 	char const* safe_cstr_( char const* aText ) noexcept
 	{
 		return aText ? aText : "<no error description>";
+	}
+
+	std::filesystem::path project_root_guess_()
+	{
+		auto cwd = std::filesystem::current_path();
+		for( int i = 0; i < 8; ++i )
+		{
+			if( std::filesystem::exists( cwd / "assets" ) )
+				return cwd;
+			if( !cwd.has_parent_path() )
+				break;
+			cwd = cwd.parent_path();
+		}
+		return std::filesystem::current_path();
+	}
+
+	std::filesystem::path profile_path_()
+	{
+		auto const root = project_root_guess_();
+		return root / "save" / "profile.cfg";
+	}
+
+	void load_profile_( State& aState )
+	{
+		auto const p = profile_path_();
+		if( !std::filesystem::exists( p ) )
+			return;
+
+		std::ifstream fin( p );
+		if( !fin )
+			return;
+
+		std::string line;
+		while( std::getline( fin, line ) )
+		{
+			auto const eq = line.find( '=' );
+			if( std::string::npos == eq )
+				continue;
+
+			auto const key = line.substr( 0, eq );
+			auto const value = line.substr( eq + 1 );
+
+			if( "high_score" == key )
+				aState.highScore = std::max( 0, std::atoi( value.c_str() ) );
+			else if( "max_wave" == key )
+				aState.maxWaveReached = std::max( 0, std::atoi( value.c_str() ) );
+			else if( "audio_enabled" == key )
+				aState.audioEnabled = 0 != std::atoi( value.c_str() );
+			else if( "show_minimap" == key )
+				aState.showMinimap = 0 != std::atoi( value.c_str() );
+			else if( "difficulty" == key )
+			{
+				int const d = std::atoi( value.c_str() );
+				aState.difficulty = d <= 0 ? EDifficulty::easy : (d >= 2 ? EDifficulty::hard : EDifficulty::normal);
+			}
+		}
+	}
+
+	void save_profile_( State const& aState )
+	{
+		auto const p = profile_path_();
+		std::filesystem::create_directories( p.parent_path() );
+
+		std::ofstream fout( p, std::ios::trunc );
+		if( !fout )
+			return;
+
+		int const d = aState.difficulty == EDifficulty::easy ? 0 : (aState.difficulty == EDifficulty::hard ? 2 : 1);
+		fout << "high_score=" << std::max( aState.highScore, aState.score ) << "\n";
+		fout << "max_wave=" << std::max( aState.maxWaveReached, aState.wave ) << "\n";
+		fout << "audio_enabled=" << (aState.audioEnabled ? 1 : 0) << "\n";
+		fout << "show_minimap=" << (aState.showMinimap ? 1 : 0) << "\n";
+		fout << "difficulty=" << d << "\n";
+	}
+
+	void save_surface_ppm_( Surface const& aSurface, std::filesystem::path const& aPath )
+	{
+		std::filesystem::create_directories( aPath.parent_path() );
+		std::ofstream out( aPath, std::ios::binary | std::ios::trunc );
+		if( !out )
+			return;
+
+		auto const w = aSurface.get_width();
+		auto const h = aSurface.get_height();
+		out << "P6\n" << w << " " << h << "\n255\n";
+
+		auto const* ptr = aSurface.get_surface_ptr();
+		for( std::uint32_t i = 0; i < w * h; ++i )
+		{
+			out.write( reinterpret_cast<char const*>(ptr + i * 4), 3 );
+		}
 	}
 
 	float difficulty_enemy_speed_scale_( EDifficulty d )
@@ -369,6 +464,19 @@ namespace
 			return;
 		}
 
+		if( GLFW_KEY_P == aKey && GLFW_PRESS == aAction )
+		{
+			if( !state->showStartScreen && !state->gameOver )
+				state->paused = !state->paused;
+			return;
+		}
+
+		if( GLFW_KEY_F12 == aKey && GLFW_PRESS == aAction )
+		{
+			state->screenshotRequested = true;
+			return;
+		}
+
 		if( GLFW_KEY_ENTER == aKey && GLFW_PRESS == aAction )
 		{
 			if( state->showStartScreen )
@@ -494,6 +602,13 @@ int main( int aArgc, char* aArgv[] ) try
 	// Parse command line arguments
 	RuntimeConfig const config = parse_command_line( aArgc, aArgv );
 
+	if( config.selfTestAssets )
+	{
+		auto img = load_image( "assets/earth.png" );
+		std::printf( "Asset self-test OK: earth.png (%ux%u)\n", img->get_width(), img->get_height() );
+		return 0;
+	}
+
 	// Initialize GLFW
 	if( GLFW_TRUE != glfwInit() )
 	{
@@ -554,6 +669,7 @@ int main( int aArgc, char* aArgv[] ) try
 
 	// Runtime state
 	State state;
+    load_profile_( state );
 	std::vector<Bullet> bullets;
 	bullets.reserve( 256 );
 	std::vector<Enemy> enemies;
@@ -622,6 +738,8 @@ int main( int aArgc, char* aArgv[] ) try
 
 	// Main loop
 	auto lastUpdateTime = Clock::now();
+	float smokeElapsed = 0.f;
+	bool smokeCaptureDone = false;
 
 	while( !glfwWindowShouldClose( window ) )
 	{
@@ -671,11 +789,14 @@ int main( int aArgc, char* aArgv[] ) try
 
 		// Update state
 		auto const now = Clock::now();
-		auto const dt = std::chrono::duration_cast<Secondsf>(now - lastUpdateTime).count();
+     auto const frameDt = std::chrono::duration_cast<Secondsf>(now - lastUpdateTime).count();
 		lastUpdateTime = now;
+		auto const dt = state.paused ? 0.f : frameDt;
+		smokeElapsed += frameDt;
 
 		if( state.restartRequested )
 		{
+         save_profile_( state );
 			auto* cursor = state.crosshair;
 			auto const selectedDifficulty = state.difficulty;
 			auto const audioEnabled = state.audioEnabled;
@@ -707,7 +828,7 @@ int main( int aArgc, char* aArgv[] ) try
 			state.countdownActive = false;
 		}
 
-		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && state.fireRequested && state.fireCooldown <= 0.f )
+       if( !state.paused && !state.showStartScreen && !state.gameOver && !state.countdownActive && state.fireRequested && state.fireCooldown <= 0.f )
 		{
 			Vec2f dir{ std::cos( state.player.angle ), std::sin( state.player.angle ) };
 			Vec2f muzzle = Vec2f{ fbwidth*0.5f, fbheight*0.5f } + dir * 28.f;
@@ -747,7 +868,7 @@ int main( int aArgc, char* aArgv[] ) try
 			exhaust.push_back( ExhaustTrail{ { exhaustPos.x + jitter(rng), exhaustPos.y + jitter(rng) }, kExhaustLife * 0.7f, kExhaustLife * 0.7f, ColorU8_sRGB{ 200, 220, 255 } } );
 		}
 
-		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && enemies.empty() )
+        if( !state.paused && !state.showStartScreen && !state.gameOver && !state.countdownActive && enemies.empty() )
 		{
 			auto const enemySpeedScale = difficulty_enemy_speed_scale_( state.difficulty );
 			auto const enemyFireScale = difficulty_enemy_fire_scale_( state.difficulty );
@@ -795,7 +916,7 @@ int main( int aArgc, char* aArgv[] ) try
 			}
 		}
 
-		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && enemies.empty() )
+        if( !state.paused && !state.showStartScreen && !state.gameOver && !state.countdownActive && enemies.empty() )
 		{
 			++state.wave;
 			if( state.wave >= 2 ) state.weaponLevel = 2;
@@ -807,7 +928,7 @@ int main( int aArgc, char* aArgv[] ) try
 			state.screenShakeStrength = std::max( state.screenShakeStrength, 1.8f );
 		}
 
-		if( !state.showStartScreen && !state.gameOver && !state.countdownActive )
+       if( !state.paused && !state.showStartScreen && !state.gameOver && !state.countdownActive )
 		{
 			auto const enemySpeedScale = difficulty_enemy_speed_scale_( state.difficulty );
 			auto const enemyFireScale = difficulty_enemy_fire_scale_( state.difficulty );
@@ -978,7 +1099,7 @@ int main( int aArgc, char* aArgv[] ) try
 			pit->vel *= 0.98f;
 
 			// Pickup magnet: attract toward player when within range
-			if( !state.showStartScreen && !state.gameOver && !state.countdownActive )
+           if( !state.paused && !state.showStartScreen && !state.gameOver && !state.countdownActive )
 			{
 				Vec2f const playerScreen{ fbwidth * 0.5f, fbheight * 0.5f };
 				Vec2f const toPlayer = playerScreen - pit->pos;
@@ -993,7 +1114,7 @@ int main( int aArgc, char* aArgv[] ) try
 			}
 
 			bool consumed = false;
-			if( !state.showStartScreen && !state.gameOver && !state.countdownActive )
+           if( !state.paused && !state.showStartScreen && !state.gameOver && !state.countdownActive )
 			{
 				auto const d = pit->pos - Vec2f{ fbwidth * 0.5f, fbheight * 0.5f };
 				if( dot( d, d ) <= 22.f * 22.f )
@@ -1065,7 +1186,7 @@ int main( int aArgc, char* aArgv[] ) try
 		state.highScore = std::max( state.highScore, state.score );
 		state.maxWaveReached = std::max( state.maxWaveReached, state.wave );
 
-		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && state.shieldRegenCooldown <= 0.f && state.shield < state.shieldMax )
+     if( !state.paused && !state.showStartScreen && !state.gameOver && !state.countdownActive && state.shieldRegenCooldown <= 0.f && state.shield < state.shieldMax )
 		{
 			state.shield = std::min( state.shieldMax, state.shield + state.shieldRegenRate * state.thisFrame.dt );
 		}
@@ -1073,7 +1194,7 @@ int main( int aArgc, char* aArgv[] ) try
 		background.update( state.player.position, state.thisFrame.movement );
 		asteroids.update( state.thisFrame.dt, state.thisFrame.movement );
 
-		if( !state.showStartScreen && !state.gameOver && !state.countdownActive && state.invulnerabilityTime <= 0.f )
+       if( !state.paused && !state.showStartScreen && !state.gameOver && !state.countdownActive && state.invulnerabilityTime <= 0.f )
 		{
 			auto absorb_or_hit_life = [&]( float shieldDamage )
 			{
@@ -1377,6 +1498,7 @@ int main( int aArgc, char* aArgv[] ) try
 			draw_text_5x7_( surface, { leftX, topY + 148.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "SPACE: TOGGLE PILOT MODE" );
 			draw_text_5x7_( surface, { leftX, topY + 172.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "R: RESTART  M: AUDIO  ESC: QUIT" );
 			draw_text_5x7_( surface, { leftX, topY + 196.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "TAB: TOGGLE MINIMAP" );
+			draw_text_5x7_( surface, { leftX, topY + 220.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "P: PAUSE  F12: SAVE FRAME" );
 
 			draw_text_5x7_( surface, { rightX, topY }, 2, ColorU8_sRGB{ 170, 210, 255 }, "GAMEPLAY LOOP" );
 			draw_text_5x7_( surface, { rightX, topY + 28.f }, 2, ColorU8_sRGB{ 230, 230, 230 }, "1. SURVIVE ASTEROIDS AND ENEMY FIRE" );
@@ -1470,6 +1592,31 @@ int main( int aArgc, char* aArgv[] ) try
 			draw_rectangle_solid( surface, { 0.f, 0.f }, { float(fbwidth), float(fbheight) }, ColorU8_sRGB{ alphaTint, 28, 28 } );
 		}
 
+		if( state.paused && !state.showStartScreen && !state.gameOver )
+		{
+			draw_rectangle_solid( surface, { fbwidth * 0.5f - 130.f, fbheight * 0.5f - 24.f }, { fbwidth * 0.5f + 130.f, fbheight * 0.5f + 24.f }, ColorU8_sRGB{ 15, 24, 58 } );
+			draw_rectangle_outline( surface, { fbwidth * 0.5f - 130.f, fbheight * 0.5f - 24.f }, { fbwidth * 0.5f + 130.f, fbheight * 0.5f + 24.f }, ColorU8_sRGB{ 130, 190, 255 } );
+			draw_text_5x7_( surface, { fbwidth * 0.5f - 58.f, fbheight * 0.5f - 8.f }, 3, ColorU8_sRGB{ 220, 235, 255 }, "PAUSED" );
+		}
+
+		if( state.screenshotRequested )
+		{
+			auto const root = project_root_guess_();
+			auto const stamp = static_cast<int>( state.totalPlayTime * 1000.f );
+			auto const framePath = root / "artifacts" / ("frame-" + std::to_string( stamp ) + ".ppm");
+			save_surface_ppm_( surface, framePath );
+			state.screenshotRequested = false;
+		}
+
+		if( config.smokeTestSeconds > 0.f && !smokeCaptureDone && smokeElapsed >= config.smokeTestSeconds )
+		{
+			auto const root = project_root_guess_();
+			auto const smokePath = root / "artifacts" / "smoketest-last-frame.ppm";
+			save_surface_ppm_( surface, smokePath );
+			smokeCaptureDone = true;
+			glfwSetWindowShouldClose( window, GLFW_TRUE );
+		}
+
 		// Subtle screen edge vignette
 		if( !state.showStartScreen )
 		{
@@ -1487,6 +1634,8 @@ int main( int aArgc, char* aArgv[] ) try
 			std::snprintf( title, sizeof(title), "%s | Difficulty: %s (1/2/3) | Start: ENTER | HI: %d", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.highScore );
 		else if( state.countdownActive )
 			std::snprintf( title, sizeof(title), "%s | %s | Launch in %.1fs", kWindowTitle, state.difficulty == EDifficulty::easy ? "Easy" : (state.difficulty == EDifficulty::hard ? "Hard" : "Normal"), state.countdownTime );
+        else if( state.paused )
+			std::snprintf( title, sizeof(title), "%s | PAUSED | Score: %d | Wave: %d | F12 Save Frame", kWindowTitle, state.score, state.wave );
 		else
 			std::snprintf( title, sizeof(title), "%s | Score: %d | Wave: %d | Kills: %d | %.0f FPS%s", kWindowTitle, state.score, state.wave, state.totalKills, state.displayFps, state.gameOver ? " | GAME OVER (R)" : "" );
 		glfwSetWindowTitle( window, title );
@@ -1498,6 +1647,7 @@ int main( int aArgc, char* aArgv[] ) try
 	// Cleanup.
 	// For now, all objects are automatically cleaned up when they go out of
 	// scope.
+	save_profile_( state );
 	
 	return 0;
 }
