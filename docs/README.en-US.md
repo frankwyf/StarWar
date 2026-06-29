@@ -49,6 +49,7 @@ Survive as long as possible, clear waves, defeat bosses, and maximize score.
 - Asteroids can be destroyed for score
 - Large asteroid hits can create smaller split asteroids
 - Enemy ships fire toward the player with slight spread (not perfect hitscan)
+- Elite enemy variants appear in higher waves (faster, tougher, more aggressive)
 - Bosses have much higher HP and multi-shot attacks
 - Weapon levels improve as waves increase:
   - **Lv1**: Single shot

@@ -275,6 +275,7 @@ namespace
 		float fireCooldown = 0.f;
 		float hp = 1.f;
 		bool boss = false;
+     bool elite = false;
 		EnemyArchetype archetype = EnemyArchetype::fighter;
 		float aiTimer = 0.f;
 	};
@@ -948,6 +949,18 @@ int main( int aArgc, char* aArgv[] ) try
 						e.archetype = EnemyArchetype::strafer;
 						e.fireCooldown *= 0.85f;
 					}
+
+					if( state.wave >= 3 )
+					{
+						float const eliteChance = std::clamp( 0.05f + state.wave * 0.01f, 0.f, 0.22f );
+						if( unit01(rng) < eliteChance )
+						{
+							e.elite = true;
+							e.hp *= 1.65f;
+							e.fireCooldown *= 0.75f;
+							e.vel *= 1.12f;
+						}
+					}
 					enemies.push_back( e );
 				}
 			}
@@ -1013,13 +1026,19 @@ int main( int aArgc, char* aArgv[] ) try
 
 					e.vel.x = std::clamp( e.vel.x, -260.f * enemySpeedScale, 260.f * enemySpeedScale );
 					e.vel.y = std::clamp( e.vel.y, -260.f * enemySpeedScale, 260.f * enemySpeedScale );
+					if( e.elite )
+					{
+						e.vel.x = std::clamp( e.vel.x, -320.f * enemySpeedScale, 320.f * enemySpeedScale );
+						e.vel.y = std::clamp( e.vel.y, -320.f * enemySpeedScale, 320.f * enemySpeedScale );
+					}
 
 					e.fireCooldown -= state.thisFrame.dt;
 					if( e.fireCooldown <= 0.f )
 					{
 						float jitter = (unit01(rng) - 0.5f) * 0.30f;
 						Mat22f miss = make_rotation_2d( jitter );
-						bullets.push_back( Bullet{ e.pos, (miss * toPlayer) * (kEnemyBulletSpeed * 0.95f * enemySpeedScale), 1.9f, true } );
+                        float const eliteBulletScale = e.elite ? 1.2f : 1.f;
+						bullets.push_back( Bullet{ e.pos, (miss * toPlayer) * (kEnemyBulletSpeed * 0.95f * enemySpeedScale * eliteBulletScale), 1.9f, true } );
 						if( e.archetype == EnemyArchetype::strafer )
 						{
 							Mat22f side = make_rotation_2d( 0.18f );
@@ -1028,6 +1047,8 @@ int main( int aArgc, char* aArgv[] ) try
 						e.fireCooldown = (1.35f + unit01(rng) * 0.7f) * enemyFireScale;
 						if( e.archetype == EnemyArchetype::rusher )
 							e.fireCooldown *= 1.25f;
+                       if( e.elite )
+							e.fireCooldown *= 0.78f;
 					}
 				}
 			}
@@ -1061,11 +1082,13 @@ int main( int aArgc, char* aArgv[] ) try
 							{
 								++state.comboCount;
 								state.comboTimer = kComboWindowSeconds;
-								int const killScore = (eit->boss ? 300 : 40) * combo_multiplier_( state.comboCount );
+                           int const baseKillScore = eit->boss ? 300 : (eit->elite ? 90 : 40);
+							int const killScore = baseKillScore * combo_multiplier_( state.comboCount );
 								state.score += killScore;
 								++state.totalKills;
+                         if( eit->elite ) ++state.eliteKills;
 								if( eit->boss ) ++state.bossesDefeated;
-								scorePopups.push_back( ScorePopup{ eit->pos, killScore, kScorePopupLife, eit->boss ? ColorU8_sRGB{ 255, 100, 100 } : ColorU8_sRGB{ 255, 230, 100 } } );
+                         scorePopups.push_back( ScorePopup{ eit->pos, killScore, kScorePopupLife, eit->boss ? ColorU8_sRGB{ 255, 100, 100 } : (eit->elite ? ColorU8_sRGB{ 140, 255, 210 } : ColorU8_sRGB{ 255, 230, 100 }) } );
 								if( !eit->boss && unit01(rng) < 0.28f )
 								{
 									pickups.push_back( Pickup{
@@ -1303,10 +1326,16 @@ int main( int aArgc, char* aArgv[] ) try
 		{
 			auto const er = make_rotation_2d( e.angle );
 			ColorF ec = e.boss ? ColorF{ 0.8f, 0.2f, 0.2f } : ColorF{ 0.8f, 0.5f, 0.2f };
+         if( e.elite && !e.boss )
+				ec = ColorF{ 0.28f, 0.9f, 0.7f };
 			if( !e.boss && e.archetype == EnemyArchetype::strafer )
 				ec = ColorF{ 0.85f, 0.65f, 0.25f };
 			if( !e.boss && e.archetype == EnemyArchetype::rusher )
 				ec = ColorF{ 0.9f, 0.38f, 0.3f };
+         if( e.elite && e.archetype == EnemyArchetype::strafer )
+				ec = ColorF{ 0.28f, 0.82f, 0.72f };
+			if( e.elite && e.archetype == EnemyArchetype::rusher )
+				ec = ColorF{ 0.26f, 0.76f, 0.64f };
 			spaceship.draw( surface, ec, er, e.pos + renderShake );
 			if( e.boss )
 			{
@@ -1433,7 +1462,7 @@ int main( int aArgc, char* aArgv[] ) try
 		if( !state.showStartScreen && !state.countdownActive )
 		{
 			char infoText[96] = {};
-			std::snprintf( infoText, sizeof(infoText), "WAVE %d  KILLS %d", state.wave, state.totalKills );
+         std::snprintf( infoText, sizeof(infoText), "WAVE %d  KILLS %d  ELITE %d", state.wave, state.totalKills, state.eliteKills );
 			draw_text_5x7_( surface, { 20.f, float(fbheight) - 36.f }, 1, ColorU8_sRGB{ 160, 170, 200 }, infoText );
 		}
 

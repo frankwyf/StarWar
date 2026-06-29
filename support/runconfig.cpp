@@ -77,6 +77,13 @@ RuntimeConfig parse_command_line( int aArgc, char const* const* aArgv )
 						"Use --help to print available command line options", value );
 				}
 
+				if( seconds < 0.f || seconds > 120.f )
+				{
+					throw Error( "Error while parsing command line\n"
+						"Value '%s' not valid for --smoketest; expected 0..120 seconds\n"
+						"Use --help to print available command line options", value );
+				}
+
 				config.smokeTestSeconds = seconds;
 			}
 			else

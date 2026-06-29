@@ -41,5 +41,7 @@ TEST_CASE( "Runconfig rejects invalid values", "[runconfig]" )
     REQUIRE_THROWS_AS( parse_( { "StarWar.exe", "--geometry=abc" } ), Error );
     REQUIRE_THROWS_AS( parse_( { "StarWar.exe", "--fbshift=NaN" } ), Error );
     REQUIRE_THROWS_AS( parse_( { "StarWar.exe", "--smoketest=abc" } ), Error );
+   REQUIRE_THROWS_AS( parse_( { "StarWar.exe", "--smoketest=-1" } ), Error );
+    REQUIRE_THROWS_AS( parse_( { "StarWar.exe", "--smoketest=999" } ), Error );
     REQUIRE_THROWS_AS( parse_( { "StarWar.exe", "--unknown" } ), Error );
 }

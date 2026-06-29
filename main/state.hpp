@@ -69,6 +69,7 @@ struct State
 	// Statistics & progression
 	int highScore = 0;
 	int totalKills = 0;
+ int eliteKills = 0;
 	int bossesDefeated = 0;
 	float totalPlayTime = 0.f;
 	int maxWaveReached = 0;

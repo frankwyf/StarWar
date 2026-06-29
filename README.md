@@ -16,6 +16,7 @@ A small open-source 2D space shooter built with modern C++17, OpenGL, and GLFW.
 
 - Modern `C++17` codebase with clean module boundaries
 - Fast gameplay loop with asteroids, enemy ships, and boss waves
+- Progressive enemy roster including elite variants on higher waves
 - Difficulty selection: `Easy`, `Normal`, `Hard`
 - Score, shield, lives, and weapon progression systems
 - GitHub Actions automated Windows build and release packaging
