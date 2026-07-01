@@ -45,6 +45,8 @@
 #include "spaceship.hpp"
 #include "background.hpp"
 #include "asteroid_field.hpp"
+#include "persistence.hpp"
+#include "text5x7.hpp"
 
 namespace
 {
@@ -97,166 +99,34 @@ namespace
 		return aText ? aText : "<no error description>";
 	}
 
-	std::filesystem::path project_root_guess_()
+	inline std::filesystem::path project_root_guess_()
 	{
-		auto cwd = std::filesystem::current_path();
-		for( int i = 0; i < 8; ++i )
-		{
-			if( std::filesystem::exists( cwd / "assets" ) )
-				return cwd;
-			if( !cwd.has_parent_path() )
-				break;
-			cwd = cwd.parent_path();
-		}
-		return std::filesystem::current_path();
+		return starwar::project_root_guess();
 	}
 
-	std::filesystem::path profile_path_()
+	inline void load_profile_( State& aState )
 	{
-		auto const root = project_root_guess_();
-		return root / "save" / "profile.cfg";
+		starwar::load_profile( aState );
 	}
 
-	void load_profile_( State& aState )
+	inline starwar::GameplayTuning load_gameplay_tuning_()
 	{
-		auto const p = profile_path_();
-		if( !std::filesystem::exists( p ) )
-			return;
-
-		std::ifstream fin( p );
-		if( !fin )
-			return;
-
-		std::string line;
-		while( std::getline( fin, line ) )
-		{
-			auto const eq = line.find( '=' );
-			if( std::string::npos == eq )
-				continue;
-
-			auto const key = line.substr( 0, eq );
-			auto const value = line.substr( eq + 1 );
-
-			if( "high_score" == key )
-				aState.highScore = std::max( 0, std::atoi( value.c_str() ) );
-			else if( "max_wave" == key )
-				aState.maxWaveReached = std::max( 0, std::atoi( value.c_str() ) );
-			else if( "audio_enabled" == key )
-				aState.audioEnabled = 0 != std::atoi( value.c_str() );
-			else if( "show_minimap" == key )
-				aState.showMinimap = 0 != std::atoi( value.c_str() );
-			else if( "difficulty" == key )
-			{
-				int const d = std::atoi( value.c_str() );
-				aState.difficulty = d <= 0 ? EDifficulty::easy : (d >= 2 ? EDifficulty::hard : EDifficulty::normal);
-			}
-		}
+		return starwar::load_gameplay_tuning();
 	}
 
-	struct GameplayTuning
+	inline void save_profile_( State const& aState )
 	{
-		float enemyHpWaveScale = 0.08f;
-		float eliteBaseChance = 0.05f;
-		float eliteWaveChanceScale = 0.01f;
-		float eliteMaxChance = 0.22f;
-       float eliteDropChance = 0.30f;
-		float playerBaseDamage = 1.f;
-		float playerLv3Damage = 1.4f;
-      float overdriveDuration = 5.f;
-		int surgeEveryWaves = 5;
-		float surgeDuration = 8.f;
-	};
-
-	GameplayTuning load_gameplay_tuning_()
-	{
-		GameplayTuning tuning;
-		auto const root = project_root_guess_();
-		auto const path = root / "config" / "gameplay.cfg";
-		if( !std::filesystem::exists( path ) )
-			return tuning;
-
-		std::ifstream fin( path );
-		if( !fin )
-			return tuning;
-
-		auto read_float = [&]( std::string const& key, float& value, std::string const& line )
-		{
-			auto const eq = line.find( '=' );
-			if( eq == std::string::npos )
-				return;
-			auto const k = line.substr( 0, eq );
-			if( k != key )
-				return;
-			value = std::strtof( line.substr( eq + 1 ).c_str(), nullptr );
-		};
-
-		auto read_int = [&]( std::string const& key, int& value, std::string const& line )
-		{
-			auto const eq = line.find( '=' );
-			if( eq == std::string::npos )
-				return;
-			auto const k = line.substr( 0, eq );
-			if( k != key )
-				return;
-			value = std::atoi( line.substr( eq + 1 ).c_str() );
-		};
-
-		std::string line;
-		while( std::getline( fin, line ) )
-		{
-			read_float( "enemy_hp_wave_scale", tuning.enemyHpWaveScale, line );
-			read_float( "elite_base_chance", tuning.eliteBaseChance, line );
-			read_float( "elite_wave_chance_scale", tuning.eliteWaveChanceScale, line );
-			read_float( "elite_max_chance", tuning.eliteMaxChance, line );
-          read_float( "elite_drop_chance", tuning.eliteDropChance, line );
-			read_float( "player_base_damage", tuning.playerBaseDamage, line );
-			read_float( "player_lv3_damage", tuning.playerLv3Damage, line );
-           read_float( "overdrive_duration", tuning.overdriveDuration, line );
-			read_int( "surge_every_waves", tuning.surgeEveryWaves, line );
-			read_float( "surge_duration", tuning.surgeDuration, line );
-		}
-
-		tuning.eliteDropChance = std::clamp( tuning.eliteDropChance, 0.f, 1.f );
-		tuning.overdriveDuration = std::clamp( tuning.overdriveDuration, 0.5f, 30.f );
-		tuning.surgeEveryWaves = std::max( 2, tuning.surgeEveryWaves );
-		tuning.surgeDuration = std::clamp( tuning.surgeDuration, 1.f, 30.f );
-
-		return tuning;
+		starwar::save_profile( aState );
 	}
 
-	void save_profile_( State const& aState )
+	inline void save_surface_ppm_( Surface const& aSurface, std::filesystem::path const& aPath )
 	{
-		auto const p = profile_path_();
-		std::filesystem::create_directories( p.parent_path() );
-
-		std::ofstream fout( p, std::ios::trunc );
-		if( !fout )
-			return;
-
-		int const d = aState.difficulty == EDifficulty::easy ? 0 : (aState.difficulty == EDifficulty::hard ? 2 : 1);
-		fout << "high_score=" << std::max( aState.highScore, aState.score ) << "\n";
-		fout << "max_wave=" << std::max( aState.maxWaveReached, aState.wave ) << "\n";
-		fout << "audio_enabled=" << (aState.audioEnabled ? 1 : 0) << "\n";
-		fout << "show_minimap=" << (aState.showMinimap ? 1 : 0) << "\n";
-		fout << "difficulty=" << d << "\n";
+		starwar::save_surface_ppm( aSurface, aPath );
 	}
 
-	void save_surface_ppm_( Surface const& aSurface, std::filesystem::path const& aPath )
+	inline void draw_text_5x7_( Surface& s, Vec2f pos, int scale, ColorU8_sRGB col, std::string_view txt )
 	{
-		std::filesystem::create_directories( aPath.parent_path() );
-		std::ofstream out( aPath, std::ios::binary | std::ios::trunc );
-		if( !out )
-			return;
-
-		auto const w = aSurface.get_width();
-		auto const h = aSurface.get_height();
-		out << "P6\n" << w << " " << h << "\n255\n";
-
-		auto const* ptr = aSurface.get_surface_ptr();
-		for( std::uint32_t i = 0; i < w * h; ++i )
-		{
-			out.write( reinterpret_cast<char const*>(ptr + i * 4), 3 );
-		}
+		starwar::draw_text_5x7( s, pos, scale, col, txt );
 	}
 
 	float difficulty_enemy_speed_scale_( EDifficulty d )
@@ -439,80 +309,6 @@ namespace
 	int combo_multiplier_( int comboCount )
 	{
 		return std::clamp( 1 + comboCount / 4, 1, 5 );
-	}
-
-	const char* glyph5x7_( char c )
-	{
-		switch( std::toupper(static_cast<unsigned char>(c)) )
-		{
-		case 'A': return "01110" "10001" "10001" "11111" "10001" "10001" "10001";
-		case 'B': return "11110" "10001" "10001" "11110" "10001" "10001" "11110";
-		case 'C': return "01110" "10001" "10000" "10000" "10000" "10001" "01110";
-		case 'D': return "11110" "10001" "10001" "10001" "10001" "10001" "11110";
-		case 'E': return "11111" "10000" "10000" "11110" "10000" "10000" "11111";
-		case 'F': return "11111" "10000" "10000" "11110" "10000" "10000" "10000";
-		case 'G': return "01110" "10001" "10000" "10111" "10001" "10001" "01110";
-		case 'H': return "10001" "10001" "10001" "11111" "10001" "10001" "10001";
-		case 'I': return "11111" "00100" "00100" "00100" "00100" "00100" "11111";
-		case 'J': return "00111" "00010" "00010" "00010" "00010" "10010" "01100";
-		case 'K': return "10001" "10010" "10100" "11000" "10100" "10010" "10001";
-		case 'L': return "10000" "10000" "10000" "10000" "10000" "10000" "11111";
-		case 'M': return "10001" "11011" "10101" "10101" "10001" "10001" "10001";
-		case 'N': return "10001" "11001" "10101" "10011" "10001" "10001" "10001";
-		case 'O': return "01110" "10001" "10001" "10001" "10001" "10001" "01110";
-		case 'P': return "11110" "10001" "10001" "11110" "10000" "10000" "10000";
-		case 'Q': return "01110" "10001" "10001" "10001" "10101" "10010" "01101";
-		case 'R': return "11110" "10001" "10001" "11110" "10100" "10010" "10001";
-		case 'S': return "01111" "10000" "10000" "01110" "00001" "00001" "11110";
-		case 'T': return "11111" "00100" "00100" "00100" "00100" "00100" "00100";
-		case 'U': return "10001" "10001" "10001" "10001" "10001" "10001" "01110";
-		case 'V': return "10001" "10001" "10001" "10001" "01010" "01010" "00100";
-		case 'W': return "10001" "10001" "10001" "10101" "10101" "11011" "10001";
-		case 'X': return "10001" "01010" "00100" "00100" "00100" "01010" "10001";
-		case 'Y': return "10001" "01010" "00100" "00100" "00100" "00100" "00100";
-		case 'Z': return "11111" "00001" "00010" "00100" "01000" "10000" "11111";
-		case '0': return "01110" "10001" "10011" "10101" "11001" "10001" "01110";
-		case '1': return "00100" "01100" "00100" "00100" "00100" "00100" "01110";
-		case '2': return "01110" "10001" "00001" "00010" "00100" "01000" "11111";
-		case '3': return "11110" "00001" "00001" "01110" "00001" "00001" "11110";
-		case '4': return "00010" "00110" "01010" "10010" "11111" "00010" "00010";
-		case '5': return "11111" "10000" "10000" "11110" "00001" "00001" "11110";
-		case '6': return "01110" "10000" "10000" "11110" "10001" "10001" "01110";
-		case '7': return "11111" "00001" "00010" "00100" "01000" "01000" "01000";
-		case '8': return "01110" "10001" "10001" "01110" "10001" "10001" "01110";
-		case '9': return "01110" "10001" "10001" "01111" "00001" "00001" "01110";
-		case ':': return "00000" "00100" "00100" "00000" "00100" "00100" "00000";
-		case '/': return "00001" "00010" "00100" "01000" "10000" "00000" "00000";
-		case '-': return "00000" "00000" "00000" "11111" "00000" "00000" "00000";
-		case '.': return "00000" "00000" "00000" "00000" "00000" "00110" "00110";
-		case '(': return "00010" "00100" "01000" "01000" "01000" "00100" "00010";
-		case ')': return "01000" "00100" "00010" "00010" "00010" "00100" "01000";
-		case ' ': return "00000" "00000" "00000" "00000" "00000" "00000" "00000";
-		default:  return "00000" "00000" "00000" "00000" "00000" "00000" "00000";
-		}
-	}
-
-	void draw_text_5x7_( Surface& s, Vec2f pos, int scale, ColorU8_sRGB col, std::string_view txt )
-	{
-		float x = pos.x;
-		for( char ch : txt )
-		{
-			auto glyph = glyph5x7_( ch );
-			for( int r = 0; r < 7; ++r )
-			{
-				for( int c = 0; c < 5; ++c )
-				{
-					if( glyph[r*5 + c] == '1' )
-					{
-						int rr = 6 - r;
-						Vec2f p0{ x + float(c*scale), pos.y + float(rr*scale) };
-						Vec2f p1{ p0.x + float(scale), p0.y + float(scale) };
-						draw_rectangle_solid( s, p0, p1, col );
-					}
-				}
-			}
-			x += float(6 * scale);
-		}
 	}
 
 	void glfw_callback_error_( int aErrNum, char const* aErrDesc )

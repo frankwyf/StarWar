@@ -60,7 +60,8 @@
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS=1;_SCL_SECURE_NO_WARNINGS=1;_DEBUG=1;BENCHMARK_STATIC_DEFINE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>..\third_party\stb\include;..\third_party\glad\include;..\third_party\glfw\include;..\third_party\catch2\include;..\third_party\benchmark\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
-      <Optimization>Disabled</Optimization><RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <MinimalRebuild>false</MinimalRebuild>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 /permissive- %(AdditionalOptions)</AdditionalOptions>
@@ -78,7 +79,8 @@
       <WarningLevel>Level4</WarningLevel>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS=1;_SCL_SECURE_NO_WARNINGS=1;NDEBUG=1;BENCHMARK_STATIC_DEFINE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>..\third_party\stb\include;..\third_party\glad\include;..\third_party\glfw\include;..\third_party\catch2\include;..\third_party\benchmark\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <Optimization>Full</Optimization><RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <Optimization>Full</Optimization>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <MinimalRebuild>false</MinimalRebuild>
@@ -100,8 +102,10 @@
     <ClInclude Include="background.hpp" />
     <ClInclude Include="defaults.hpp" />
     <ClInclude Include="particle_field.hpp" />
+    <ClInclude Include="persistence.hpp" />
     <ClInclude Include="spaceship.hpp" />
     <ClInclude Include="state.hpp" />
+    <ClInclude Include="text5x7.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="asteroid.cpp" />
@@ -109,8 +113,10 @@
     <ClCompile Include="background.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="particle_field.cpp" />
+    <ClCompile Include="persistence.cpp" />
     <ClCompile Include="spaceship.cpp" />
     <ClCompile Include="state.cpp" />
+    <ClCompile Include="text5x7.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\vmlib\vmlib.vcxproj">
@@ -136,4 +142,3 @@
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
-
